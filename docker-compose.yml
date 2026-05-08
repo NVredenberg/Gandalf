@@ -1,0 +1,17 @@
+services:
+  lernfeld-docx:
+    build:
+      context: .
+    container_name: lernfeld-docx
+    ports:
+      - "3010:3000"
+    environment:
+      PORT: "3000"
+      OLLAMA_URL: "http://host.docker.internal:11434/api/generate"
+      OLLAMA_MODEL: "llama3.1:8b"
+      AI_DEBUG: "0"
+    volumes:
+      - ./data/uploads:/app/data/uploads
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped

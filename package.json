@@ -1,0 +1,23 @@
+{
+  "name": "lernfeld-docx-generator",
+  "version": "1.0.0",
+  "description": "Lokales System zur Analyse und Generierung didaktischer Lernfelddokumente.",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node backend/server.js",
+    "dev": "node --watch backend/server.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "docx": "^9.5.1",
+    "express": "^4.21.2",
+    "jszip": "^3.10.1",
+    "mammoth": "^1.9.0",
+    "multer": "^2.0.2"
+  }
+}

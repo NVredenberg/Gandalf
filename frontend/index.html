@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Lernfeld-DOCX-Generator</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="workspace">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Lokal</p>
+            <h1>Lernfeld-DOCX-Generator</h1>
+          </div>
+          <div class="actions">
+            <button id="analyzeButton" class="button secondary" type="button" disabled>
+              KI prüfen
+            </button>
+            <button id="renderButton" class="button primary" type="button" disabled>
+              Speichern unter
+            </button>
+          </div>
+        </header>
+
+        <section class="upload-panel">
+          <label class="file-picker">
+            <input id="fileInput" type="file" accept=".md,.docx" />
+            <span>Datei auswählen</span>
+          </label>
+          <div>
+            <strong id="fileName">Keine Datei geladen</strong>
+            <p id="statusText">Bereit</p>
+          </div>
+        </section>
+
+        <section class="meta-panel" aria-label="Metadaten">
+          <div>
+            <span>Beruf</span>
+            <strong id="metaBeruf">-</strong>
+          </div>
+          <div>
+            <span>Fach</span>
+            <strong id="metaFach">-</strong>
+          </div>
+          <div>
+            <span>Lernfeld</span>
+            <strong id="metaLernfeld">-</strong>
+          </div>
+          <div>
+            <span>LS</span>
+            <strong id="metaCount">0</strong>
+          </div>
+        </section>
+
+        <section class="content-grid">
+          <div>
+            <h2>Erkannte Lernsituationen</h2>
+            <div id="situationList" class="situation-list"></div>
+          </div>
+          <aside class="json-panel">
+            <h2>Standardisiertes JSON</h2>
+            <pre id="jsonPreview">{}</pre>
+          </aside>
+        </section>
+      </section>
+    </main>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
