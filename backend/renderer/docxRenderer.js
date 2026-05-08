@@ -523,3 +523,20 @@ function hasSituationDevelopment(situation) {
     /entwickl|modell|algorithm|automatis|prompt|system/i.test(k.text)
   );
 }
+
+function cellMargins() {
+  return { top: 130, right: 160, bottom: 130, left: 160 };
+}
+
+function smallCellMargins() {
+  return { top: 90, right: 100, bottom: 90, left: 100 };
+}
+
+function tableBorders() {
+  const border = { style: BorderStyle.SINGLE, size: 1, color: COLORS.border };
+  return { top: border, right: border, bottom: border, left: border };
+}
+
+function cellShading(fill) {
+  return { type: ShadingType.CLEAR, color: "auto", fill };
+}
