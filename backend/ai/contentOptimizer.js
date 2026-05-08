@@ -11,108 +11,230 @@ export async function optimizeLearningDocument(input) {
   return harmonized;
 }
 
+// ---------------------------------------------------------------------------
+// KI-Kurzzusammenfassungen für die KI-Zuordnungstabelle
+// ---------------------------------------------------------------------------
+
+/**
+ * Erzeugt für jede Lernsituation eine kurze (≤ 15 Wörter) KI-Kompetenz-
+ * zusammenfassung. Gibt ein Map von LS-ID → Zusammenfassungstext zurück.
+ * Im Fehlerfall wird ein leeres Objekt zurückgegeben, damit der Renderer
+ * auf den Fallback-Code ausweichen kann.
+ */
+export async function generateKiSummariesForTable(lernsituationen) {
+  if (!lernsituationen?.length) return {};
+
+  const input = lernsituationen.map((ls) => ({
+    id: ls.id,
+    kompetenzen: ls.kompetenzen
+      .map((k) => (k.tags.length ? `[${k.tags.join("][")}] ${k.text}` : k.text))
+      .slice(0, 6) // maximal 6 Kompetenzen pro LS an das Modell übergeben
+  }));
+
+  const prompt = `Du fasst KI-Kompetenzen von Lernsituationen zusammen.
+
+Regeln:
+- Maximal 12 Wörter pro Zusammenfassung.
+- Nenne die dominante Kompetenzart (Anwendung/Grundlagen/Gesellschaft & Recht).
+- Formuliere aktiv und präzise.
+- Keine Einleitung, kein Erklärungstext.
+
+Eingabe:
+${JSON.stringify(input, null, 2)}
+
+Antworte ausschließlich mit validem JSON, kein Markdown:
+[{"id": "LS X.X", "summary": "..."}, ...]`;
+
+  try {
+    const raw = await generateWithOllama(prompt, {
+      format: "json",
+      temperature: 0.05
+    });
+
+    const parsed = parseJsonArray(raw);
+    const result = {};
+    for (const entry of parsed) {
+      if (entry?.id && entry?.summary) {
+        result[entry.id] = String(entry.summary).trim();
+      }
+    }
+    return result;
+  } catch (error) {
+    console.warn("[KI-Summaries] Fehler beim Generieren:", error.message);
+    return {};
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Interne Hilfsfunktionen
+// ---------------------------------------------------------------------------
+
 async function runContentOptimization(document) {
-  const responseText = await generateWithOllama(buildPrompt(document), {
+  const responseText = await generateWithOllama(buildContentPrompt(document), {
     format: "json",
     temperature: 0.1
   });
   const parsed = parseJsonResponse(responseText);
-
   return normalizeAiDocument(document, parsed);
 }
 
+/**
+ * Zweiter Durchlauf: Szenarien zu einer gemeinsamen Fallgeschichte vereinen.
+ *
+ * Verbesserungen gegenüber der alten Version:
+ * - Fordert nur das minimale Rückgabeformat { scenarios: [...] } an
+ * - Höhere Temperature (0.2) damit das Modell wirklich umschreibt
+ * - Explizite Vorgabe eines Firmennamens-Platzhalters verhindert Copy-Paste
+ * - Validierung: Falls weniger Szenarien zurückkommen als erwartet, Fallback
+ */
 async function runScenarioHarmonization(document) {
-  if (document.lernsituationen.length < 2) {
-    return document;
-  }
+  if (document.lernsituationen.length < 2) return document;
 
-  const responseText = await generateWithOllama(buildScenarioPrompt(document), {
-    format: "json",
-    temperature: 0.05
+  const responseText = await generateWithOllama(
+    buildScenarioPrompt(document),
+    { format: "json", temperature: 0.2 }
+  );
+
+  const parsed = parseScenarioResponse(responseText, document.lernsituationen.length);
+  if (!parsed) return document; // Fallback bei Parse-Fehler
+
+  // Nur einstieg-Felder aus dem Szenario-Ergebnis übernehmen
+  const lernsituationen = document.lernsituationen.map((ls, index) => {
+    const incoming = parsed[index];
+    const newEinstieg = incoming?.einstieg?.trim();
+    return newEinstieg ? { ...ls, einstieg: newEinstieg } : ls;
   });
-  const parsed = parseJsonResponse(responseText);
 
-  return normalizeAiDocument(document, parsed);
+  return { ...document, lernsituationen };
 }
 
-function buildPrompt(document) {
+function buildContentPrompt(document) {
   return `Du bist ein didaktischer Fachassistent.
 
-Du erhaeltst ein bereits standardisiertes JSON fuer Lernfelddokumente.
+Du erhältst ein standardisiertes JSON für Lernfelddokumente.
 
 Du darfst:
-- Inhalte fachlich und didaktisch pruefen
-- Kompetenzen sinnvoll ergaenzen
+- Inhalte fachlich und didaktisch prüfen
+- Kompetenzen sinnvoll ergänzen
 - Einstiegsszenarien sprachlich verbessern
 
-Wichtig:
-- Die eigentliche Story-Kohärenz wird danach in einem zweiten Schritt bearbeitet.
-- Du darfst hier Einstiegsszenarien verbessern, aber keine Tabellen, kein Layout und keine neuen Felder erzeugen.
-
 Du darfst NICHT:
-- Tabellen entwerfen
-- Layout beschreiben
-- Formatierungen ausgeben
-- neue Felder hinzufuegen
-- die Reihenfolge oder Anzahl der Lernsituationen veraendern
-- IDs der Lernsituationen veraendern
+- Tabellen entwerfen oder Layout beschreiben
+- Neue Felder hinzufügen
+- Die Reihenfolge oder Anzahl der Lernsituationen verändern
+- IDs der Lernsituationen verändern
 
-Gib ausschliesslich valides JSON zurueck.
-Keine Markdown-Codebloecke, keine Kommentare, keine Erklaerung.
+Tags dürfen nur AK, IG oder MK sein.
+Jede Kompetenz muss mindestens einen Tag behalten oder erhalten.
 
-Das JSON muss exakt diese Schluessel verwenden:
-meta, lernsituationen, id, einstieg, handlungsprodukt, kompetenzen, text, tags, inhalte, methoden.
+Gib ausschließlich valides JSON zurück.
+Kein Markdown, keine Kommentare.
 
-Tags duerfen nur AK, IG oder MK sein.
-Jede Kompetenz muss mindestens einen passenden Tag behalten oder erhalten.
-Vorhandene Tags duerfen nicht entfernt werden, wenn die Kompetenz inhaltlich gleich bleibt.
+Schlüssel: meta, lernsituationen, id, einstieg, handlungsprodukt, kompetenzen, text, tags, inhalte, methoden.
 
 JSON:
 ${JSON.stringify(document, null, 2)}`;
 }
 
+/**
+ * Fokussierter Prompt – fordert AUSSCHLIESSLICH die neuen einstieg-Felder.
+ * Kleineres Ausgabeformat → weniger Halluzinationen, zuverlässigeres Parsing.
+ */
 function buildScenarioPrompt(document) {
-  const scenarioList = document.lernsituationen
-    .map((situation, index) => {
-      return `${index + 1}. ${situation.id}
-Einstieg: ${situation.einstieg || "-"}
-Handlungsprodukt: ${situation.handlungsprodukt || "-"}
-Inhalte: ${situation.inhalte || "-"}`;
+  const lsCount = document.lernsituationen.length;
+
+  const situationList = document.lernsituationen
+    .map((ls, i) => {
+      return `${i + 1}. ${ls.id}
+   Handlungsprodukt: ${ls.handlungsprodukt || "-"}
+   Inhalte: ${ls.inhalte || "-"}
+   Bisheriges Einstiegsszenario: ${ls.einstieg || "(leer)"}`;
     })
     .join("\n\n");
 
-  return `Du bist ein Story-Editor fuer didaktische Lernsituationen.
+  return `Du bist Story-Editor für berufliche Lernfelddokumente.
 
-Deine einzige Aufgabe:
-Alle Einstiegsszenarien muessen zu EINER gemeinsamen Fallgeschichte gehoeren.
+Aufgabe: Schreibe für alle ${lsCount} Lernsituationen neue Einstiegsszenarien.
 
-Verbindliche Regeln:
-- Waehle genau einen gemeinsamen Betrieb oder eine gemeinsame Institution.
-- Waehle genau einen roten Faden: gleicher Kunde, gleicher Auftrag oder dasselbe Projekt.
-- Formuliere JEDES Feld "einstieg" neu, auch wenn es bereits passend wirkt.
-- Jede Lernsituation muss als naechster Schritt derselben Unterrichtsreihe erkennbar sein.
-- LS 1 startet den Fall.
-- Spaetere LS greifen sichtbar auf vorherige Ereignisse zurueck.
-- Unterschiedliche Firmen, Kunden, Orte oder unverbundene Auftraege muessen ersetzt werden.
-- IDs, Reihenfolge, Anzahl der Lernsituationen, Kompetenzen, Inhalte, Methoden und Handlungsprodukte bleiben erhalten.
-- Erzeuge kein Layout und keine Tabellenbeschreibung.
+PFLICHTREGELN – keine Ausnahmen:
+1. Erfinde EINEN Betrieb mit einem konkreten Namen (z.B. "Bürotec GmbH Dortmund").
+2. Alle Szenarien spielen in DIESEM Betrieb mit denselben Personen.
+3. LS 1 startet den Auftrag. Jede folgende LS ist der nächste Schritt desselben Projekts.
+4. Verweise in LS 2+ ausdrücklich auf Ereignisse aus vorherigen LS.
+5. Jedes Szenario: 2–4 Sätze, Präsens, konkret und lebendig.
+6. Schreibe JEDES Szenario NEU – auch wenn es bereits ähnlich klingt.
 
 Kontext:
 Beruf: ${document.meta.beruf || "-"}
-Fach: ${document.meta.fach || "-"}
 Lernfeld: ${document.meta.lernfeld || "-"}
 
-Aktuelle Einstiegsszenarien:
-${scenarioList}
+Lernsituationen:
+${situationList}
 
-Gib das komplette JSON zurueck.
-Erlaubte Schluessel:
-meta, lernsituationen, id, einstieg, handlungsprodukt, kompetenzen, text, tags, inhalte, methoden.
+Gib NUR dieses JSON zurück, kein Markdown, kein Text davor oder danach:
+{
+  "scenarios": [
+    {"id": "LS X.X", "einstieg": "..."},
+    ...
+  ]
+}`;
+}
 
-Gib ausschliesslich valides JSON zurueck.
+/**
+ * Parst das kompakte Szenario-Antwortformat { scenarios: [...] }
+ * und gibt ein Array zurück – oder null bei Fehler.
+ */
+function parseScenarioResponse(raw, expectedCount) {
+  try {
+    const cleaned = String(raw || "")
+      .replace(/^```(?:json)?\s*/i, "")
+      .replace(/\s*```$/i, "")
+      .trim();
 
-JSON:
-${JSON.stringify(document, null, 2)}`;
+    const first = cleaned.indexOf("{");
+    const last = cleaned.lastIndexOf("}");
+    if (first < 0 || last <= first) return null;
+
+    const parsed = JSON.parse(cleaned.slice(first, last + 1));
+    const scenarios = parsed?.scenarios;
+
+    if (!Array.isArray(scenarios) || scenarios.length === 0) return null;
+
+    // Warnung wenn die Anzahl nicht stimmt, aber trotzdem weitermachen
+    if (scenarios.length !== expectedCount) {
+      console.warn(
+        `[Scenario] Erwartet ${expectedCount} Szenarien, erhalten ${scenarios.length}`
+      );
+    }
+
+    return scenarios;
+  } catch (error) {
+    console.warn("[Scenario] Parse-Fehler:", error.message);
+    return null;
+  }
+}
+
+function parseJsonArray(raw) {
+  const cleaned = String(raw || "")
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+
+  try {
+    const parsed = JSON.parse(cleaned);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    const first = cleaned.indexOf("[");
+    const last = cleaned.lastIndexOf("]");
+    if (first >= 0 && last > first) {
+      try {
+        return JSON.parse(cleaned.slice(first, last + 1));
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  }
 }
 
 function parseJsonResponse(value) {
@@ -127,27 +249,23 @@ function parseJsonResponse(value) {
   } catch {
     const first = withoutFence.indexOf("{");
     const last = withoutFence.lastIndexOf("}");
-
     if (first >= 0 && last > first) {
       return JSON.parse(withoutFence.slice(first, last + 1));
     }
   }
 
-  throw new Error("Ollama hat kein gueltiges JSON zurueckgegeben.");
+  throw new Error("Ollama hat kein gültiges JSON zurückgegeben.");
 }
 
 function debugScenarioChanges(original, optimized, harmonized) {
-  if (process.env.AI_DEBUG !== "1") {
-    return;
-  }
+  if (process.env.AI_DEBUG !== "1") return;
 
-  const rows = original.lernsituationen.map((situation, index) => ({
-    id: situation.id,
-    original: situation.einstieg,
+  const rows = original.lernsituationen.map((ls, index) => ({
+    id: ls.id,
+    original: ls.einstieg,
     afterContentOptimization: optimized.lernsituationen[index]?.einstieg || "",
     afterScenarioHarmonization: harmonized.lernsituationen[index]?.einstieg || "",
-    changed:
-      situation.einstieg !== (harmonized.lernsituationen[index]?.einstieg || "")
+    changed: ls.einstieg !== (harmonized.lernsituationen[index]?.einstieg || "")
   }));
 
   console.log("[AI_DEBUG] Einstiegsszenario-Vergleich");

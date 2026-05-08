@@ -16,6 +16,7 @@ import {
 } from "docx";
 
 import { competenceColor, normalizeLearningDocument, TAG_COLORS } from "../parser/schema.js";
+import { generateKiSummariesForTable } from "../ai/contentOptimizer.js";
 
 const COLORS = Object.freeze({
   blue: "1F3864",
@@ -32,6 +33,9 @@ const RIGHT_WIDTH = 50;
 
 export async function renderLearningDocument(input) {
   const document = normalizeLearningDocument(input);
+
+  // KI-Zusammenfassungen für die Zuordnungstabelle vorab generieren
+  const kiSummaries = await generateKiSummariesForTable(document.lernsituationen);
 
   const doc = new Document({
     numbering: {
@@ -146,7 +150,7 @@ export async function renderLearningDocument(input) {
             text: "KI-Zuordnung",
             heading: HeadingLevel.HEADING_2
           }),
-          renderKiMappingTable(document)
+          renderKiMappingTable(document, kiSummaries)
         ]
       }
     ]
@@ -254,11 +258,16 @@ function renderLearningSituationTable(document, situation, index) {
   });
 }
 
-function renderKiMappingTable(document) {
+/**
+ * KI-Zuordnungstabelle.
+ * @param {object} document
+ * @param {Record<string, string>} kiSummaries  – Map von LS-ID → Kurztext
+ */
+function renderKiMappingTable(document, kiSummaries = {}) {
   const rows = [
     tableHeaderRow([
       "Lernsituation",
-      "Kompetenz",
+      "KI-Kompetenz (Kurzfassung)",
       "KI-Grundlagen",
       "KI-Anwendung",
       "KI-Entwicklung",
@@ -267,11 +276,15 @@ function renderKiMappingTable(document) {
   ];
 
   for (const situation of document.lernsituationen) {
+    const summary =
+      kiSummaries[situation.id] ||
+      fallbackKiSummary(situation);
+
     rows.push(
       new TableRow({
         children: [
           smallCell(situation.id),
-          smallCell(summarizeSituationKiCompetences(situation)),
+          smallCell(summary),
           smallCell(hasSituationTag(situation, "IG") ? "x" : "-"),
           smallCell(hasSituationTag(situation, "AK") ? "x" : "-"),
           smallCell(hasSituationDevelopment(situation) ? "x" : "-"),
@@ -282,16 +295,18 @@ function renderKiMappingTable(document) {
   }
 
   if (rows.length === 1) {
-    rows.push(new TableRow({
-      children: [
-        smallCell("-"),
-        smallCell("Keine Kompetenzen erkannt."),
-        smallCell("-"),
-        smallCell("-"),
-        smallCell("-"),
-        smallCell("-")
-      ]
-    }));
+    rows.push(
+      new TableRow({
+        children: [
+          smallCell("-"),
+          smallCell("Keine Kompetenzen erkannt."),
+          smallCell("-"),
+          smallCell("-"),
+          smallCell("-"),
+          smallCell("-")
+        ]
+      })
+    );
   }
 
   return new Table({
@@ -300,20 +315,33 @@ function renderKiMappingTable(document) {
   });
 }
 
+/** Code-Fallback falls Ollama-Aufruf fehlschlägt */
+function fallbackKiSummary(situation) {
+  if (!situation.kompetenzen.length) return "Keine KI-Kompetenzen";
+
+  const tagGroups = [
+    ["AK", "Anwendung"],
+    ["IG", "Grundlagen"],
+    ["MK", "Gesellschaft"]
+  ]
+    .map(([tag, label]) => {
+      const count = situation.kompetenzen.filter((k) => hasTag(k, tag)).length;
+      return count > 0 ? `${label} (${count})` : "";
+    })
+    .filter(Boolean);
+
+  return tagGroups.length ? tagGroups.join(", ") : "Kompetenzen vorhanden";
+}
+
 function renderCompetences(competences = []) {
-  if (!competences.length) {
-    return [emptyParagraph()];
-  }
+  if (!competences.length) return [emptyParagraph()];
 
   return competences.map((competence) => {
     const color = competenceColor(competence);
     const tags = competence.tags.length ? `[${competence.tags.join("][")}] ` : "";
 
     return new Paragraph({
-      numbering: {
-        reference: "competence-bullets",
-        level: 0
-      },
+      numbering: { reference: "competence-bullets", level: 0 },
       spacing: { after: 70 },
       children: [
         new TextRun({
@@ -327,10 +355,7 @@ function renderCompetences(competences = []) {
 
 function contentCell(children) {
   return new TableCell({
-    width: {
-      size: LEFT_WIDTH,
-      type: WidthType.PERCENTAGE
-    },
+    width: { size: LEFT_WIDTH, type: WidthType.PERCENTAGE },
     verticalAlign: VerticalAlign.TOP,
     margins: cellMargins(),
     borders: tableBorders(),
@@ -363,11 +388,7 @@ function tableHeaderRow(labels) {
         children: [
           new Paragraph({
             children: [
-              new TextRun({
-                text: label,
-                bold: true,
-                color: COLORS.white
-              })
+              new TextRun({ text: label, bold: true, color: COLORS.white })
             ]
           })
         ]
@@ -388,13 +409,7 @@ function smallCell(value) {
 function headingParagraph(text) {
   return new Paragraph({
     spacing: { after: 70 },
-    children: [
-      new TextRun({
-        text,
-        bold: true,
-        color: COLORS.blue
-      })
-    ]
+    children: [new TextRun({ text, bold: true, color: COLORS.blue })]
   });
 }
 
@@ -404,20 +419,14 @@ function textParagraphs(value, options = {}) {
     .map((line) => line.trim())
     .filter(Boolean);
 
-  if (!lines.length) {
-    return [emptyParagraph()];
-  }
+  if (!lines.length) return [emptyParagraph()];
 
   return lines.map(
     (line) =>
       new Paragraph({
         spacing: { after: 70 },
         children: [
-          new TextRun({
-            text: line,
-            bold: options.bold || false,
-            color: COLORS.text
-          })
+          new TextRun({ text: line, bold: options.bold || false, color: COLORS.text })
         ]
       })
   );
@@ -452,34 +461,24 @@ function headerValueRun(text) {
 }
 
 function splitMethodSections(value = "") {
-  const sections = {
-    methoden: [],
-    materialien: [],
-    organisation: []
-  };
+  const sections = { methoden: [], materialien: [], organisation: [] };
   let target = "methoden";
 
   for (const block of String(value || "").split(/\n+/)) {
     const line = block.trim();
-    if (!line) {
-      continue;
-    }
+    if (!line) continue;
 
     const materialMatch = line.match(/^Unterrichtsmaterialien\s*\/?\s*Fundstelle\s*:\s*(.*)$/i);
     if (materialMatch) {
       target = "materialien";
-      if (materialMatch[1]) {
-        sections[target].push(materialMatch[1]);
-      }
+      if (materialMatch[1]) sections[target].push(materialMatch[1]);
       continue;
     }
 
     const organisationMatch = line.match(/^Organisatorische Hinweise\s*:\s*(.*)$/i);
     if (organisationMatch) {
       target = "organisation";
-      if (organisationMatch[1]) {
-        sections[target].push(organisationMatch[1]);
-      }
+      if (organisationMatch[1]) sections[target].push(organisationMatch[1]);
       continue;
     }
 
@@ -498,12 +497,9 @@ function formatSituationHeading(situation, index) {
 }
 
 function deriveSituationTitle(situation) {
-  const source = situation.handlungsprodukt || situation.einstieg || situation.inhalte || "Lernsituation";
-  return source
-    .replace(/\s+/g, " ")
-    .replace(/[.!?].*$/, "")
-    .trim()
-    .slice(0, 90) || "Lernsituation";
+  const source =
+    situation.handlungsprodukt || situation.einstieg || situation.inhalte || "Lernsituation";
+  return source.replace(/\s+/g, " ").replace(/[.!?].*$/, "").trim().slice(0, 90) || "Lernsituation";
 }
 
 function formatBlockInfo(index) {
@@ -519,92 +515,11 @@ function hasTag(competence, tag) {
 }
 
 function hasSituationTag(situation, tag) {
-  return situation.kompetenzen.some((competence) => hasTag(competence, tag));
+  return situation.kompetenzen.some((k) => hasTag(k, tag));
 }
 
 function hasSituationDevelopment(situation) {
-  return situation.kompetenzen.some((competence) => matchesDevelopment(competence.text));
-}
-
-function matchesDevelopment(value = "") {
-  return /entwickl|modell|algorithm|automatis|prompt|system/i.test(value);
-}
-
-function summarizeSituationKiCompetences(situation) {
-  if (!situation.kompetenzen.length) {
-    return "Keine KI-Kompetenzen erkannt.";
-  }
-
-  const groups = [
-    ["AK", "Anwendung"],
-    ["IG", "Grundlagen"],
-    ["MK", "Gesellschaft & Recht"]
-  ]
-    .map(([tag, label]) => {
-      const texts = situation.kompetenzen
-        .filter((competence) => hasTag(competence, tag))
-        .map((competence) => shortCompetenceText(competence.text));
-
-      return texts.length ? `${label}: ${texts.slice(0, 2).join("; ")}` : "";
-    })
-    .filter(Boolean);
-
-  if (groups.length) {
-    return groups.join(" | ");
-  }
-
-  return situation.kompetenzen
-    .slice(0, 3)
-    .map((competence) => shortCompetenceText(competence.text))
-    .join("; ");
-}
-
-function shortCompetenceText(value) {
-  const text = String(value || "").replace(/\s+/g, " ").trim();
-  if (text.length <= 110) {
-    return text;
-  }
-
-  return `${text.slice(0, 107).trim()}...`;
-}
-
-function cellMargins() {
-  return {
-    top: 130,
-    right: 160,
-    bottom: 130,
-    left: 160
-  };
-}
-
-function smallCellMargins() {
-  return {
-    top: 90,
-    right: 100,
-    bottom: 90,
-    left: 100
-  };
-}
-
-function tableBorders() {
-  const border = {
-    style: BorderStyle.SINGLE,
-    size: 1,
-    color: COLORS.border
-  };
-
-  return {
-    top: border,
-    right: border,
-    bottom: border,
-    left: border
-  };
-}
-
-function cellShading(fill) {
-  return {
-    type: ShadingType.CLEAR,
-    color: "auto",
-    fill
-  };
+  return situation.kompetenzen.some((k) =>
+    /entwickl|modell|algorithm|automatis|prompt|system/i.test(k.text)
+  );
 }
