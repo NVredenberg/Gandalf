@@ -28,16 +28,23 @@ export async function generateKiSummariesForTable(lernsituationen) {
     id: ls.id,
     kompetenzen: ls.kompetenzen
       .map((k) => (k.tags.length ? `[${k.tags.join("][")}] ${k.text}` : k.text))
-      .slice(0, 6) // maximal 6 Kompetenzen pro LS an das Modell übergeben
   }));
 
-  const prompt = `Du fasst KI-Kompetenzen von Lernsituationen zusammen.
+  const prompt = `Du fasst KI-Kompetenzen von Lernsituationen für eine Übersichtstabelle zusammen.
+
+Format pro Lernsituation: Nenne die 2–3 wichtigsten Tätigkeiten als kurze Verben/Nomen, jeweils mit Tag in Klammern.
+Trenne mehrere Einträge mit Semikolon. Maximal 25 Wörter pro Zusammenfassung.
+
+Beispiel-Eingabe:
+{"id": "LS 5.1", "kompetenzen": ["[AK][IG] Kundenanfragen auswerten und fehlende Daten klären", "[MK] Kriterien für Angebotsvergleich festlegen"]}
+
+Beispiel-Ausgabe:
+{"id": "LS 5.1", "summary": "Kundenanfragen auswerten, Datenlücken klären (AK, IG); Vergleichskriterien festlegen (MK)"}
 
 Regeln:
-- Maximal 12 Wörter pro Zusammenfassung.
-- Nenne die dominante Kompetenzart (Anwendung/Grundlagen/Gesellschaft & Recht).
-- Formuliere aktiv und präzise.
-- Keine Einleitung, kein Erklärungstext.
+- Nenne konkrete Tätigkeiten, keine abstrakten Kategorienamen wie "Anwendungskompetenz".
+- Tags (AK/IG/MK) am Ende der jeweiligen Gruppe in Klammern.
+- Kein erklärender Text, nur die Zusammenfassung.
 
 Eingabe:
 ${JSON.stringify(input, null, 2)}
@@ -81,18 +88,18 @@ async function runContentOptimization(document) {
 /**
  * Zweiter Durchlauf: Szenarien zu einer gemeinsamen Fallgeschichte vereinen.
  *
- * Verbesserungen gegenüber der alten Version:
- * - Fordert nur das minimale Rückgabeformat { scenarios: [...] } an
- * - Höhere Temperature (0.2) damit das Modell wirklich umschreibt
- * - Explizite Vorgabe eines Firmennamens-Platzhalters verhindert Copy-Paste
- * - Validierung: Falls weniger Szenarien zurückkommen als erwartet, Fallback
+ * Kernregel: Das bestehende einstieg-Feld wird dem Modell NICHT übergeben.
+ * Sieht das Modell den Originaltext, kürzt/editiert es ihn statt ihn neu
+ * zu erfinden. Stattdessen bekommt es nur Handlungsprodukt + Inhalte als
+ * inhaltlichen Anker und erfindet die Geschichte frei.
+ * Temperature 0.4 für ausreichend kreative, aber kohärente Ausgabe.
  */
 async function runScenarioHarmonization(document) {
   if (document.lernsituationen.length < 2) return document;
 
   const responseText = await generateWithOllama(
     buildScenarioPrompt(document),
-    { format: "json", temperature: 0.2 }
+    { format: "json", temperature: 0.4 }
   );
 
   const parsed = parseScenarioResponse(responseText, document.lernsituationen.length);
@@ -143,38 +150,46 @@ ${JSON.stringify(document, null, 2)}`;
 function buildScenarioPrompt(document) {
   const lsCount = document.lernsituationen.length;
 
+  // WICHTIG: Kein einstieg-Feld übergeben – nur Handlungsprodukt + Inhalte.
+  // Sobald das Modell den Originaltext sieht, editiert/kürzt es ihn statt
+  // eine neue Geschichte zu erfinden.
   const situationList = document.lernsituationen
     .map((ls, i) => {
       return `${i + 1}. ${ls.id}
    Handlungsprodukt: ${ls.handlungsprodukt || "-"}
-   Inhalte: ${ls.inhalte || "-"}
-   Bisheriges Einstiegsszenario: ${ls.einstieg || "(leer)"}`;
+   Inhalte: ${ls.inhalte || "-"}`;
     })
     .join("\n\n");
 
-  return `Du bist Story-Editor für berufliche Lernfelddokumente.
+  return `Du bist Autor von Unterrichtsszenarien für die Berufsschule.
 
-Aufgabe: Schreibe für alle ${lsCount} Lernsituationen neue Einstiegsszenarien.
+AUFGABE: Erfinde eine zusammenhängende Fallgeschichte für ${lsCount} Lernsituationen.
 
-PFLICHTREGELN – keine Ausnahmen:
-1. Erfinde EINEN Betrieb mit einem konkreten Namen (z.B. "Bürotec GmbH Dortmund").
-2. Alle Szenarien spielen in DIESEM Betrieb mit denselben Personen.
-3. LS 1 startet den Auftrag. Jede folgende LS ist der nächste Schritt desselben Projekts.
-4. Verweise in LS 2+ ausdrücklich auf Ereignisse aus vorherigen LS.
-5. Jedes Szenario: 2–4 Sätze, Präsens, konkret und lebendig.
-6. Schreibe JEDES Szenario NEU – auch wenn es bereits ähnlich klingt.
+BEISPIEL – so soll das Ergebnis aussehen (für einen anderen Beruf):
+Betrieb: "DataFlow GmbH, Bochum" – IT-Dienstleister
+LS 1: "Die DataFlow GmbH aus Bochum erhält den Auftrag, das Netzwerk der Stadtwerke Bochum zu modernisieren. Projektleiterin Sandra Keller beauftragt das Azubi-Team mit der Bestandsaufnahme. Die Auszubildenden dokumentieren die vorhandene Infrastruktur und erstellen einen ersten Statusbericht."
+LS 2: "Auf Basis des Statusberichts aus LS 1 legt Sandra Keller ein Budget fest. Das Azubi-Team soll nun konkrete Angebote von drei Netzwerkhardware-Lieferanten einholen und vergleichen. Bis Freitag muss eine Empfehlung vorliegen."
+LS 3: "Der Angebotsvergleich ist abgeschlossen. Sandra Keller hat Lieferant B ausgewählt. Jetzt konfiguriert das Team die ersten Switches und dokumentiert die neue Netzwerktopologie für das Stadtwerke-Projekthandbuch."
 
-Kontext:
+PFLICHTREGELN für deine Geschichte:
+1. Erfinde einen passenden Betrieb mit konkretem Namen und Standort.
+2. Erfinde 1–2 Personen (z.B. Ausbilder, Kundin), die in allen LS vorkommen.
+3. LS 1 startet den Auftrag neu – kein Vorwissen nötig.
+4. Jede folgende LS erwähnt konkret, was in der vorherigen passiert ist.
+5. Der rote Faden ist dasselbe Projekt oder derselbe Kunde.
+6. Jedes Szenario: 3–4 Sätze, Gegenwartsform, konkret und lebendig.
+7. Passe den Betrieb zum Beruf an – kein branchenfremder Kontext.
+
 Beruf: ${document.meta.beruf || "-"}
 Lernfeld: ${document.meta.lernfeld || "-"}
 
-Lernsituationen:
+Lernsituationen (Handlungsprodukte und Inhalte sind fest vorgegeben):
 ${situationList}
 
-Gib NUR dieses JSON zurück, kein Markdown, kein Text davor oder danach:
+Antworte NUR mit diesem JSON, kein Markdown, kein erklärender Text:
 {
   "scenarios": [
-    {"id": "LS X.X", "einstieg": "..."},
+    {"id": "LS X.X", "einstieg": "3-4 Sätze der Geschichte..."},
     ...
   ]
 }`;
