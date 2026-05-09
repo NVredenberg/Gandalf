@@ -15,10 +15,13 @@ export async function generateWithOllama(prompt, settings = {}) {
     model: settings.model || OLLAMA_MODEL,
     prompt,
     stream: false,
+    think: false,   // Qwen3 Thinking-Modus deaktivieren — für JSON-Aufgaben
+                    // unnötig und sprengt den 4096-Token-Standardkontext
     options: {
       temperature: settings.temperature ?? 0.1,
       top_p: settings.topP ?? 0.85,
-      repeat_penalty: settings.repeatPenalty ?? 1.05
+      repeat_penalty: settings.repeatPenalty ?? 1.05,
+      num_ctx: 8192  // Kontext verdoppeln als Absicherung für lange Prompts
     }
   };
 
