@@ -8,7 +8,7 @@ services:
     environment:
       PORT: "3000"
       OLLAMA_URL: "http://host.docker.internal:11434/api/generate"
-      OLLAMA_MODEL: "llama3.1:8b"
+      OLLAMA_MODEL: "qwen3:14b-q8_0"
       AI_DEBUG: "0"
     volumes:
       - ./data/uploads:/app/data/uploads
