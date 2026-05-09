@@ -9,6 +9,7 @@ const OLLAMA_TIMEOUT_MS = readPositiveInteger(
   process.env.OLLAMA_TIMEOUT_MS,
   30 * 60 * 1000
 );
+const OLLAMA_NUM_PREDICT = readPositiveInteger(process.env.OLLAMA_NUM_PREDICT, 4096);
 
 export function getOllamaConfig() {
   return {
@@ -16,6 +17,7 @@ export function getOllamaConfig() {
     model: OLLAMA_MODEL,
     tagsUrl: OLLAMA_TAGS_URL,
     numCtx: OLLAMA_NUM_CTX,
+    numPredict: OLLAMA_NUM_PREDICT,
     timeoutMs: OLLAMA_TIMEOUT_MS
   };
 }
@@ -66,7 +68,8 @@ export async function generateWithOllama(prompt, settings = {}) {
       temperature: settings.temperature ?? 0.1,
       top_p: settings.topP ?? 0.85,
       repeat_penalty: settings.repeatPenalty ?? 1.05,
-      num_ctx: settings.numCtx ?? OLLAMA_NUM_CTX
+      num_ctx: settings.numCtx ?? OLLAMA_NUM_CTX,
+      num_predict: settings.numPredict ?? OLLAMA_NUM_PREDICT
     }
   };
 
@@ -79,7 +82,8 @@ export async function generateWithOllama(prompt, settings = {}) {
   }
 
   console.log(
-    `[Ollama] Anfrage gestartet: model=${model}, prompt=${prompt.length} Zeichen, ctx=${body.options.num_ctx}`
+    `[Ollama] Anfrage gestartet: model=${model}, prompt=${prompt.length} Zeichen, ` +
+      `ctx=${body.options.num_ctx}, predict=${body.options.num_predict}`
   );
 
   let response;

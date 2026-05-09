@@ -15,8 +15,8 @@ import {
   WidthType
 } from "docx";
 
-import { competenceColor, normalizeLearningDocument, TAG_COLORS } from "../parser/schema.js";
-import { generateKiSummariesForTable } from "../ai/contentOptimizer.js";
+import { normalizeLearningDocument, TAG_COLORS } from "../parser/schema.js";
+import { generateKiMappingsForTable } from "../ai/contentOptimizer.js";
 
 const COLORS = Object.freeze({
   blue: "1F3864",
@@ -30,12 +30,13 @@ const COLORS = Object.freeze({
 const TABLE_WIDTH = 100;
 const LEFT_WIDTH = 50;
 const RIGHT_WIDTH = 50;
+const KI_MAPPING_WIDTHS = [12, 38, 12, 12, 13, 13];
 
-export async function renderLearningDocument(input) {
+export async function renderLearningDocument(input, settings = {}) {
   const document = normalizeLearningDocument(input);
 
   // KI-Zusammenfassungen für die Zuordnungstabelle vorab generieren
-  const kiSummaries = await generateKiSummariesForTable(document.lernsituationen);
+  const kiMappings = await generateKiMappingsForTable(document.lernsituationen, settings);
 
   const doc = new Document({
     numbering: {
@@ -150,7 +151,7 @@ export async function renderLearningDocument(input) {
             text: "KI-Zuordnung",
             heading: HeadingLevel.HEADING_2
           }),
-          renderKiMappingTable(document, kiSummaries)
+          renderKiMappingTable(document, kiMappings)
         ]
       }
     ]
@@ -261,9 +262,9 @@ function renderLearningSituationTable(document, situation, index) {
 /**
  * KI-Zuordnungstabelle.
  * @param {object} document
- * @param {Record<string, string>} kiSummaries  – Map von LS-ID → Kurztext
+ * @param {Record<string, object>} kiMappings Map von LS-ID zu KI-Zuordnung
  */
-function renderKiMappingTable(document, kiSummaries = {}) {
+function renderKiMappingTable(document, kiMappings = {}) {
   const rows = [
     tableHeaderRow([
       "Lernsituation",
@@ -272,23 +273,24 @@ function renderKiMappingTable(document, kiSummaries = {}) {
       "KI-Anwendung",
       "KI-Entwicklung",
       "Gesellschaft & Recht"
-    ])
+    ], KI_MAPPING_WIDTHS)
   ];
 
   for (const situation of document.lernsituationen) {
-    const summary =
-      kiSummaries[situation.id] ||
-      fallbackKiSummary(situation);
+    const mapping = {
+      ...fallbackKiMapping(situation),
+      ...(kiMappings[situation.id] || {})
+    };
 
     rows.push(
       new TableRow({
         children: [
-          smallCell(situation.id),
-          smallCell(summary),
-          smallCell(hasSituationTag(situation, "IG") ? "x" : "-"),
-          smallCell(hasSituationTag(situation, "AK") ? "x" : "-"),
-          smallCell(hasSituationDevelopment(situation) ? "x" : "-"),
-          smallCell(hasSituationTag(situation, "MK") ? "x" : "-")
+          smallCell(situation.id, KI_MAPPING_WIDTHS[0]),
+          smallCell(mapping.summary, KI_MAPPING_WIDTHS[1]),
+          smallCell(mapping.grundlagen ? "x" : "-", KI_MAPPING_WIDTHS[2]),
+          smallCell(mapping.anwendung ? "x" : "-", KI_MAPPING_WIDTHS[3]),
+          smallCell(mapping.entwicklung ? "x" : "-", KI_MAPPING_WIDTHS[4]),
+          smallCell(mapping.gesellschaftRecht ? "x" : "-", KI_MAPPING_WIDTHS[5])
         ]
       })
     );
@@ -298,12 +300,12 @@ function renderKiMappingTable(document, kiSummaries = {}) {
     rows.push(
       new TableRow({
         children: [
-          smallCell("-"),
-          smallCell("Keine Kompetenzen erkannt."),
-          smallCell("-"),
-          smallCell("-"),
-          smallCell("-"),
-          smallCell("-")
+          smallCell("-", KI_MAPPING_WIDTHS[0]),
+          smallCell("Keine Kompetenzen erkannt.", KI_MAPPING_WIDTHS[1]),
+          smallCell("-", KI_MAPPING_WIDTHS[2]),
+          smallCell("-", KI_MAPPING_WIDTHS[3]),
+          smallCell("-", KI_MAPPING_WIDTHS[4]),
+          smallCell("-", KI_MAPPING_WIDTHS[5])
         ]
       })
     );
@@ -316,41 +318,79 @@ function renderKiMappingTable(document, kiSummaries = {}) {
 }
 
 /** Code-Fallback falls Ollama-Aufruf fehlschlägt */
-function fallbackKiSummary(situation) {
-  if (!situation.kompetenzen.length) return "Keine KI-Kompetenzen";
+function fallbackKiMapping(situation) {
+  const text = situationText(situation);
+  const explicitKi = hasExplicitKiSignal(text);
 
-  const tagGroups = [
-    ["AK", "Anwendung"],
-    ["IG", "Grundlagen"],
-    ["MK", "Gesellschaft"]
-  ]
-    .map(([tag, label]) => {
-      const count = situation.kompetenzen.filter((k) => hasTag(k, tag)).length;
-      return count > 0 ? `${label} (${count})` : "";
-    })
-    .filter(Boolean);
+  return {
+    summary: fallbackKiSummary(situation, text),
+    grundlagen:
+      explicitKi && hasAny(text, [
+        "grundlage", "funktionsweise", "algorithm", "modell", "datenqualitaet",
+        "datenqualit", "training", "prompt", "maschinelles lernen", "ki-system"
+      ]),
+    anwendung:
+      (explicitKi && hasAny(text, [
+        "nutzen", "anwenden", "einsetzen", "recherch", "generier",
+        "auswert", "vergleich", "dokumentier", "assistenz"
+      ])) ||
+      hasAny(text, ["chatbot", "chatgpt", "ki-gestuetzt", "ollama", "llm"]),
+    entwicklung:
+      hasAny(text, ["ki-loesung", "ki-system", "ki-workflow"]) ||
+      (explicitKi && hasAny(text, [
+        "entwickl", "prototyp", "workflow", "automatisierung", "pipeline",
+        "system entwerfen", "modellieren", "programmier", "implementier"
+      ])),
+    gesellschaftRecht: hasAny(text, [
+      "datenschutz", "urheber", "recht", "bias", "diskrimin", "transparen",
+      "verantwort", "ethik", "gesellschaft", "quelle", "quellenkritik"
+    ])
+  };
+}
 
-  return tagGroups.length ? tagGroups.join(", ") : "Kompetenzen vorhanden";
+function fallbackKiSummary(situation, text) {
+  const competence = situation.kompetenzen[0]?.text || "";
+  const product = situation.handlungsprodukt || "";
+  const content = situation.inhalte || "";
+
+  if (hasExplicitKiSignal(text)) {
+    return sentence(
+      `Die Lernenden bearbeiten ${shortText(product || competence, 70)} und reflektieren dabei den KI- oder Datenbezug anhand von ${shortText(content || competence, 90)}.`
+    );
+  }
+
+  if (competence || product) {
+    return sentence(
+      `Die Lernenden bearbeiten ${shortText(product || "ein berufliches Handlungsprodukt", 70)} und wenden dabei ${shortText(competence || content, 110)} fachbezogen an.`
+    );
+  }
+
+  return "Die Lernsituation enthaelt keinen eindeutig erkennbaren KI-Bezug; die fachliche Zuordnung sollte manuell geprueft werden.";
 }
 
 function renderCompetences(competences = []) {
   if (!competences.length) return [emptyParagraph()];
 
   return competences.map((competence) => {
-    const color = competenceColor(competence);
-    const tags = competence.tags.length ? `[${competence.tags.join("][")}] ` : "";
-
     return new Paragraph({
       numbering: { reference: "competence-bullets", level: 0 },
       spacing: { after: 70 },
-      children: [
-        new TextRun({
-          text: `${tags}${competence.text}`,
-          color
-        })
-      ]
+      children: competenceTextRuns(competence)
     });
   });
+}
+
+function competenceTextRuns(competence) {
+  const segments = Array.isArray(competence?.segments) && competence.segments.length
+    ? competence.segments
+    : [{ text: competence?.text || "", tag: null }];
+
+  return segments.map((segment) =>
+    new TextRun({
+      text: segment.text,
+      color: TAG_COLORS[segment.tag] || COLORS.text
+    })
+  );
 }
 
 function contentCell(children) {
@@ -377,11 +417,14 @@ function fullWidthRow(children) {
   });
 }
 
-function tableHeaderRow(labels) {
+function tableHeaderRow(labels, widths = []) {
   return new TableRow({
     tableHeader: true,
-    children: labels.map((label) =>
+    children: labels.map((label, index) =>
       new TableCell({
+        ...(widths[index]
+          ? { width: { size: widths[index], type: WidthType.PERCENTAGE } }
+          : {}),
         shading: cellShading(COLORS.blue),
         margins: smallCellMargins(),
         borders: tableBorders(),
@@ -397,8 +440,9 @@ function tableHeaderRow(labels) {
   });
 }
 
-function smallCell(value) {
+function smallCell(value, width) {
   return new TableCell({
+    ...(width ? { width: { size: width, type: WidthType.PERCENTAGE } } : {}),
     verticalAlign: VerticalAlign.TOP,
     margins: smallCellMargins(),
     borders: tableBorders(),
@@ -510,18 +554,38 @@ function extractTrainingYear(value = "") {
   return String(value).match(/(\d+)\.?\s*Ausbildungsjahr/i)?.[1] || "";
 }
 
-function hasTag(competence, tag) {
-  return (competence.tags || []).includes(tag);
+function situationText(situation) {
+  return [
+    situation.einstieg,
+    situation.handlungsprodukt,
+    situation.inhalte,
+    situation.methoden,
+    ...(situation.kompetenzen || []).map((competence) => competence.text)
+  ]
+    .join(" ")
+    .toLowerCase();
 }
 
-function hasSituationTag(situation, tag) {
-  return situation.kompetenzen.some((k) => hasTag(k, tag));
+function hasAny(text, terms) {
+  return terms.some((term) => text.includes(term.toLowerCase()));
 }
 
-function hasSituationDevelopment(situation) {
-  return situation.kompetenzen.some((k) =>
-    /entwickl|modell|algorithm|automatis|prompt|system/i.test(k.text)
-  );
+function hasExplicitKiSignal(text) {
+  return /\b(ki|ai|llm)\b/.test(text) || hasAny(text, [
+    "chatgpt", "ollama", "llama", "qwen", "prompt", "algorithmus",
+    "maschinelles lernen", "kuenstliche intelligenz", "intelligenzmodell"
+  ]);
+}
+
+function shortText(value, maxLength) {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  if (text.length <= maxLength) return text || "-";
+  return `${text.slice(0, maxLength - 3).trimEnd()}...`;
+}
+
+function sentence(value) {
+  const text = String(value || "").trim();
+  return /[.!?]$/.test(text) ? text : `${text}.`;
 }
 
 function cellMargins() {

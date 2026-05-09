@@ -5,6 +5,7 @@ import { parseTemplateTablesFromXml } from "../backend/parser/docxTableParser.js
 import { parseMarkdownText } from "../backend/parser/markdownParser.js";
 import { extractTagsFromText, normalizeAiDocument, TAG_COLORS } from "../backend/parser/schema.js";
 import { structure } from "../backend/renderer/structure.js";
+import { __contentOptimizerInternals } from "../backend/ai/contentOptimizer.js";
 
 test("Markdown wird in das verbindliche JSON normalisiert", () => {
   const document = parseMarkdownText(`
@@ -123,6 +124,23 @@ test("Kompetenzfarben entsprechen der Vorgabe", () => {
   assert.equal(TAG_COLORS.NONE, "404040");
 });
 
+test("Inline-Tags markieren nur digitale Schluesselkompetenz-Segmente", () => {
+  const extracted = extractTagsFromText(
+    "Ermitteln Anforderungen und nutzen <MK>seriöse Online-quellen</MK> zur Validierung."
+  );
+
+  assert.equal(
+    extracted.text,
+    "Ermitteln Anforderungen und nutzen seriöse Online-quellen zur Validierung."
+  );
+  assert.deepEqual(extracted.tags, ["MK"]);
+  assert.deepEqual(extracted.segments, [
+    { text: "Ermitteln Anforderungen und nutzen ", tag: null },
+    { text: "seriöse Online-quellen", tag: "MK" },
+    { text: " zur Validierung.", tag: null }
+  ]);
+});
+
 test("KI-Normalisierung darf LS-Anzahl und IDs nicht verändern", () => {
   const original = parseMarkdownText(`
 Lernfeld: LF 5
@@ -193,4 +211,70 @@ test("Kompetenz-Tags werden aus Text erkannt und nach KI-Pruefung erhalten", () 
   const normalized = normalizeAiDocument(original, aiCandidate);
   assert.deepEqual(normalized.lernsituationen[0].kompetenzen[0].tags, ["IG"]);
   assert.deepEqual(normalized.lernsituationen[1].kompetenzen[0].tags, ["MK"]);
+});
+
+test("Inline-Markierungen bleiben erhalten, wenn die KI sie nicht zurueckgibt", () => {
+  const original = {
+    meta: { lernfeld: "LF 5" },
+    lernsituationen: [
+      {
+        id: "LS 5.1",
+        kompetenzen: [
+          "Anforderungen dokumentieren und <MK>Informationen mit Online-quellen validieren</MK>."
+        ]
+      }
+    ]
+  };
+  const aiCandidate = {
+    meta: { lernfeld: "LF 5" },
+    lernsituationen: [
+      {
+        id: "LS 5.1",
+        kompetenzen: [{ text: "Anforderungen dokumentieren und Informationen validieren.", tags: [] }]
+      }
+    ]
+  };
+
+  const normalized = normalizeAiDocument(original, aiCandidate);
+  assert.deepEqual(normalized.lernsituationen[0].kompetenzen[0].segments, [
+    { text: "Anforderungen dokumentieren und ", tag: null },
+    { text: "Informationen mit Online-quellen validieren", tag: "MK" },
+    { text: ".", tag: null }
+  ]);
+});
+
+test("KI-JSON-Parser repariert fehlende Kommas in Modellantworten", () => {
+  const mappings = __contentOptimizerInternals.parseJsonArray(`{
+    "mappings": [
+      {
+        "id": "LS 5.1",
+        "summary": "Die Lernenden pruefen KI-gestuetzte Rechercheergebnisse und begruenden passende Kriterien fuer das Handlungsprodukt."
+        "grundlagen": false,
+        "anwendung": true,
+        "entwicklung": false,
+        "gesellschaftRecht": true
+      }
+    ]
+  }`);
+
+  assert.equal(mappings.length, 1);
+  assert.equal(mappings[0].id, "LS 5.1");
+  assert.equal(mappings[0].anwendung, true);
+  assert.equal(mappings[0].gesellschaftRecht, true);
+});
+
+test("KI-JSON-Parser extrahiert JSON trotz Zusatztext", () => {
+  const parsed = __contentOptimizerInternals.parseJsonResponse(`
+Hier ist das Ergebnis:
+{
+  "scenarios": [
+    {
+      "id": "LS 5.1",
+      "einstieg": "Die Auszubildenden erhalten einen Auftrag."
+    }
+  ]
+}
+`);
+
+  assert.equal(parsed.scenarios[0].id, "LS 5.1");
 });

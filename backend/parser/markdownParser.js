@@ -220,7 +220,7 @@ function parseCompetences(lines) {
     .filter(Boolean)
     .map((item) => {
       const extracted = extractTagsFromText(item);
-      return { text: extracted.text, tags: extracted.tags };
+      return { text: extracted.text, tags: extracted.tags, segments: extracted.segments };
     })
     .filter((item) => item.text.length > 0);
 }

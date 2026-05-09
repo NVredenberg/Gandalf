@@ -6,7 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { checkOllamaStatus, getOllamaConfig } from "./ai/ollamaClient.js";
-import { optimizeLearningDocument } from "./ai/contentOptimizer.js";
+import { optimizeLearningDocument, runScenarioHarmonization } from "./ai/contentOptimizer.js";
 import { parseUploadedFile } from "./parser/index.js";
 import { normalizeLearningDocument } from "./parser/schema.js";
 import { renderLearningDocument } from "./renderer/docxRenderer.js";
@@ -110,8 +110,23 @@ app.post("/api/analyze", (req, res, next) => {
 
   (async () => {
     const document = normalizeLearningDocument(req.body?.document);
-    const optimized = await optimizeLearningDocument(document);
+    const optimized = await optimizeLearningDocument(document, {
+      model: selectedModel(req)
+    });
     res.json({ document: optimized });
+  })().catch(next);
+});
+
+app.post("/api/scenarios", (req, res, next) => {
+  req.socket.setTimeout(AI_TIMEOUT_MS);
+  res.setTimeout(AI_TIMEOUT_MS);
+
+  (async () => {
+    const document = normalizeLearningDocument(req.body?.document);
+    const harmonized = await runScenarioHarmonization(document, {
+      model: selectedModel(req)
+    });
+    res.json({ document: harmonized });
   })().catch(next);
 });
 
@@ -121,7 +136,9 @@ app.post("/api/render", (req, res, next) => {
 
   (async () => {
     const document = normalizeLearningDocument(req.body?.document);
-    const buffer = await renderLearningDocument(document);
+    const buffer = await renderLearningDocument(document, {
+      model: selectedModel(req)
+    });
     const fileName = buildOutputFileName(document);
 
     res.setHeader(
@@ -165,4 +182,9 @@ function buildOutputFileName(document) {
 function readPositiveInteger(value, fallback) {
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function selectedModel(req) {
+  const model = String(req.body?.model || "").trim();
+  return model.length ? model : undefined;
 }

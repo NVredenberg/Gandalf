@@ -15,6 +15,9 @@
             <h1>Lernfeld-DOCX-Generator</h1>
           </div>
           <div class="actions">
+            <button id="scenariosButton" class="button secondary" type="button" disabled>
+              Szenarien generieren
+            </button>
             <button id="analyzeButton" class="button secondary" type="button" disabled>
               KI prüfen
             </button>
@@ -36,6 +39,9 @@
           <div id="serviceStatus" class="service-status checking" title="KI-Verbindung wird geprüft">
             <span>Homelab-KI</span>
             <strong id="ollamaStatus">Prüfe...</strong>
+            <select id="modelSelect" class="model-select" aria-label="Sprachmodell">
+              <option value="">Modell wird geladen</option>
+            </select>
             <small id="ollamaDetails">Ollama</small>
           </div>
         </section>
@@ -43,15 +49,15 @@
         <section class="meta-panel" aria-label="Metadaten">
           <div>
             <span>Beruf</span>
-            <strong id="metaBeruf">-</strong>
+            <input id="metaBeruf" class="meta-input" type="text" />
           </div>
           <div>
             <span>Fach</span>
-            <strong id="metaFach">-</strong>
+            <input id="metaFach" class="meta-input" type="text" />
           </div>
           <div>
             <span>Lernfeld</span>
-            <strong id="metaLernfeld">-</strong>
+            <input id="metaLernfeld" class="meta-input" type="text" />
           </div>
           <div>
             <span>LS</span>

@@ -43,7 +43,12 @@ Die generierten DOCX-Dateien werden nicht im Container gespeichert. Der Browser 
 - DOCX-Templates mit wiederholten 6-Zeilen-Tabellen werden direkt aus der Word-Tabellenstruktur gelesen
 - DOCX-Fallback ueber Mammoth-Markdown und Mammoth-Rohtext
 - KI-Pruefung ueber Ollama auf dem Host (`host.docker.internal:11434` in Docker)
-- zweistufige KI-Optimierung: Inhalte zuerst, Einstiegsszenarien danach in einem separaten Story-Durchlauf
+- schneller Button fuer reine Szenario-Generierung
+- vollstaendige KI-Pruefung als separater, laengerer Schritt
+- Metadaten und erkannte Lernsituationen vor der KI-Pruefung im Browser korrigierbar
+- variable Modellauswahl direkt in der Homelab-KI-Leiste
+- zweistufige Szenario-Generierung: Story-Kontext zuerst, Einstiegsszenarien danach
+- optionale Einzelgenerierung pro Lernsituation ueber `SCENARIO_MODE=individual`
 - DOCX-Erzeugung ueber die `docx` Library
 - Homelab-KI-Status direkt in der Web-Oberflaeche
 
@@ -79,6 +84,8 @@ Die vollstaendige Homelab-Anleitung liegt in `docs/homelab-deployment.md`.
 ## API
 
 - `POST /api/upload` mit Form-Feld `file`
-- `POST /api/analyze` mit `{ "document": ... }`
-- `POST /api/render` mit `{ "document": ... }`
+- `POST /api/scenarios` mit `{ "document": ..., "model": "optional" }`
+- `POST /api/analyze` mit `{ "document": ..., "model": "optional" }`
+- `POST /api/render` mit `{ "document": ..., "model": "optional" }`
+- `GET /api/live`
 - `GET /api/health`

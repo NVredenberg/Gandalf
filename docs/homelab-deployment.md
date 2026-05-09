@@ -56,12 +56,16 @@ APP_PORT=3010
 OLLAMA_URL=http://host.docker.internal:11434/api/generate
 OLLAMA_MODEL=llama3.1:8b
 OLLAMA_NUM_CTX=16384
+OLLAMA_NUM_PREDICT=4096
 OLLAMA_TIMEOUT_MS=1800000
 AI_TIMEOUT_MS=2700000
+SCENARIO_MODE=batch
 AI_DEBUG=0
 ```
 
 `llama3.1:8b` ist der stabile Standard fuer komplexere Dokumentaufgaben auf dem ThinkCentre. `llama3.2:3b` ist schneller, aber bei langen didaktischen Texten schwaecher.
+
+Fuer maximale Szenarioqualitaet kannst du optional `SCENARIO_MODE=individual` setzen. Dann wird jede Lernsituation einzeln generiert; das dauert laenger, liefert aber oft ausfuehrlichere und passgenauere Einstiegssituationen.
 
 ## Ollama auf dem Host vorbereiten
 

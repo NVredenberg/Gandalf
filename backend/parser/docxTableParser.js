@@ -168,7 +168,7 @@ function parseCompetences(value) {
     .filter(Boolean)
     .map((line) => {
       const extracted = extractTagsFromText(line);
-      return { text: extracted.text, tags: extracted.tags };
+      return { text: extracted.text, tags: extracted.tags, segments: extracted.segments };
     });
 }
 
