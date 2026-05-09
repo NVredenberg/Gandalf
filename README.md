@@ -24,6 +24,7 @@ Jede Lernsituation wird als 6-Zeilen-Tabelle mit 2 Spalten erzeugt. Zeile 1, 4, 
 ## Docker-Start
 
 ```bash
+cp .env.example .env
 ollama pull llama3.1:8b
 docker compose up -d --build
 ```
@@ -41,16 +42,17 @@ Die generierten DOCX-Dateien werden nicht im Container gespeichert. Der Browser 
 - Upload von `.md` und `.docx`
 - DOCX-Templates mit wiederholten 6-Zeilen-Tabellen werden direkt aus der Word-Tabellenstruktur gelesen
 - DOCX-Fallback ueber Mammoth-Markdown und Mammoth-Rohtext
-- KI-Pruefung ueber `http://localhost:11434/api/generate`
+- KI-Pruefung ueber Ollama auf dem Host (`host.docker.internal:11434` in Docker)
 - zweistufige KI-Optimierung: Inhalte zuerst, Einstiegsszenarien danach in einem separaten Story-Durchlauf
 - DOCX-Erzeugung ueber die `docx` Library
+- Homelab-KI-Status direkt in der Web-Oberflaeche
 
 ## KI-Debugging
 
-Wenn Einstiegsszenarien nicht sichtbar vereinheitlicht werden, in `docker-compose.yml` setzen:
+Wenn Einstiegsszenarien nicht sichtbar vereinheitlicht werden, in `.env` setzen:
 
-```yaml
-AI_DEBUG: "1"
+```env
+AI_DEBUG=1
 ```
 
 Dann neu starten:
@@ -66,11 +68,13 @@ In den Logs erscheint ein Vorher/Nachher-Vergleich fuer jedes Einstiegsszenario.
 
 Das Modell wird ueber `OLLAMA_MODEL` gesetzt:
 
-```yaml
-OLLAMA_MODEL: "llama3.1:8b"
+```env
+OLLAMA_MODEL=llama3.1:8b
 ```
 
 Auf deinem ThinkCentre mit i5-13400 und 32 GB RAM ist `llama3.1:8b` der stabile Startpunkt. Fuer bessere Schreib- und Story-Kohaerenz kannst du ein 12B/14B-Instruct-Modell testen, wenn du laengere Laufzeiten akzeptierst.
+
+Die vollstaendige Homelab-Anleitung liegt in `docs/homelab-deployment.md`.
 
 ## API
 

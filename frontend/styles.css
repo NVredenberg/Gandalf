@@ -139,6 +139,11 @@ h2 {
   padding: 14px;
 }
 
+.upload-panel > div:not(.service-status) {
+  min-width: 0;
+  flex: 1;
+}
+
 .file-picker input {
   position: absolute;
   width: 1px;
@@ -161,6 +166,43 @@ h2 {
 #statusText {
   margin: 0;
   color: var(--muted);
+}
+
+.service-status {
+  min-width: 190px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  background: var(--surface-muted);
+}
+
+.service-status span,
+.service-status small {
+  display: block;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.service-status strong {
+  display: block;
+  margin: 2px 0;
+  font-size: 0.95rem;
+}
+
+.service-status.ready {
+  border-color: #86efac;
+  background: #f0fdf4;
+}
+
+.service-status.warning {
+  border-color: #facc15;
+  background: #fefce8;
+}
+
+.service-status.error {
+  border-color: #fca5a5;
+  background: #fef2f2;
 }
 
 .meta-panel {
@@ -296,6 +338,10 @@ h2 {
   .upload-panel {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .service-status {
+    min-width: 0;
   }
 
   .actions {

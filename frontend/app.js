@@ -6,6 +6,9 @@ const state = {
 const fileInput = document.querySelector("#fileInput");
 const fileName = document.querySelector("#fileName");
 const statusText = document.querySelector("#statusText");
+const serviceStatus = document.querySelector("#serviceStatus");
+const ollamaStatus = document.querySelector("#ollamaStatus");
+const ollamaDetails = document.querySelector("#ollamaDetails");
 const analyzeButton = document.querySelector("#analyzeButton");
 const renderButton = document.querySelector("#renderButton");
 const situationList = document.querySelector("#situationList");
@@ -237,4 +240,37 @@ function setStatus(message) {
   statusText.textContent = message;
 }
 
+async function checkSystemStatus() {
+  try {
+    const response = await fetch("/api/health", { cache: "no-store" });
+    const payload = await response.json();
+    const status = payload.ollamaStatus;
+    const model = status?.model || payload.model || "-";
+
+    if (status?.ok && status.modelAvailable) {
+      setServiceStatus("ready", "KI bereit", model);
+      return;
+    }
+
+    if (status?.ok) {
+      setServiceStatus("warning", "Modell fehlt", `${model} laden`);
+      return;
+    }
+
+    setServiceStatus("error", "Ollama nicht erreichbar", model);
+    serviceStatus.title = status?.error || "Ollama ist nicht erreichbar.";
+  } catch (error) {
+    setServiceStatus("error", "Status nicht verfügbar", "Backend prüfen");
+    serviceStatus.title = error.message;
+  }
+}
+
+function setServiceStatus(kind, label, detail) {
+  serviceStatus.className = `service-status ${kind}`;
+  serviceStatus.title = detail;
+  ollamaStatus.textContent = label;
+  ollamaDetails.textContent = detail;
+}
+
+checkSystemStatus();
 renderDocument();

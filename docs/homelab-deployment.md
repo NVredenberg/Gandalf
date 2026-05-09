@@ -1,13 +1,14 @@
 # Deployment ins Homelab
 
-Zielsystem laut Setup:
+Zielsystem laut `homelab-ki-setup-2026-aktuell.md`:
 
 - KI-Rechner: ThinkCentre `192.168.178.68`
-- Ollama läuft direkt auf dem Host
+- Ollama laeuft direkt auf dem Host, nicht in Docker
 - Docker-Services liegen unter `/data/docker/...`
-- Port `3000` ist bereits durch Open WebUI belegt
+- Open WebUI nutzt bereits Port `3000`
+- Diese App laeuft deshalb auf Port `3010`
 
-Dieses Projekt läuft deshalb auf:
+Web-App:
 
 ```text
 http://192.168.178.68:3010
@@ -21,7 +22,7 @@ Empfohlener Ordner auf dem KI-Rechner:
 /data/docker/lernfeld-docx
 ```
 
-## Variante A: Direkt per SCP von Windows kopieren
+## Dateien kopieren
 
 Auf dem Windows-Rechner im Projektordner:
 
@@ -40,18 +41,27 @@ cd /data/docker/lernfeld-docx
 
 `USER` durch deinen Linux-Benutzer auf dem ThinkCentre ersetzen.
 
-## Variante B: Per rsync kopieren
+## Konfiguration
 
-Auf dem Windows-Rechner, falls `rsync` verfügbar ist:
+Eine lokale `.env` aus der Vorlage anlegen:
 
 ```bash
-rsync -av --delete \
-  --exclude node_modules \
-  --exclude data/uploads \
-  ./ USER@192.168.178.68:/data/docker/lernfeld-docx/
+cp .env.example .env
 ```
 
-## Ollama prüfen
+Standardwerte fuer dein Homelab:
+
+```env
+APP_PORT=3010
+OLLAMA_URL=http://host.docker.internal:11434/api/generate
+OLLAMA_MODEL=llama3.1:8b
+OLLAMA_NUM_CTX=16384
+AI_DEBUG=0
+```
+
+`llama3.1:8b` ist der stabile Standard fuer komplexere Dokumentaufgaben auf dem ThinkCentre. `llama3.2:3b` ist schneller, aber bei langen didaktischen Texten schwaecher.
+
+## Ollama auf dem Host vorbereiten
 
 Auf dem KI-Rechner:
 
@@ -60,7 +70,7 @@ ollama pull llama3.1:8b
 curl http://localhost:11434/api/tags
 ```
 
-Wenn Ollama aus Docker-Containern noch nicht erreichbar ist:
+Da die App in Docker laeuft, muss Ollama fuer Container erreichbar sein:
 
 ```bash
 sudo systemctl edit ollama
@@ -71,6 +81,7 @@ Eintragen:
 ```ini
 [Service]
 Environment="OLLAMA_HOST=0.0.0.0:11434"
+Environment="OLLAMA_MODELS=/data/ollama/models"
 ```
 
 Danach:
@@ -78,7 +89,16 @@ Danach:
 ```bash
 sudo systemctl daemon-reload
 sudo systemctl restart ollama
+curl http://192.168.178.68:11434/api/tags
 ```
+
+Falls die Firewall aktiv ist:
+
+```bash
+sudo ufw allow 11434/tcp
+```
+
+Port `11434` nur im LAN/VPN freigeben, nicht oeffentlich ins Internet.
 
 ## Container starten
 
@@ -88,38 +108,12 @@ Im Projektordner auf dem KI-Rechner:
 docker compose up -d --build
 ```
 
-Status prüfen:
+Status pruefen:
 
 ```bash
 docker compose ps
 docker compose logs -f lernfeld-docx
 ```
-
-## Öffnen
-
-Im Browser:
-
-```text
-http://192.168.178.68:3010
-```
-
-## Empfohlen: Speichern-unter-Dialog auf dem Laptop
-
-Ein echter Ordner-Auswahldialog ist im Browser nur auf `localhost` oder per HTTPS zuverlässig erlaubt. Wenn du die Datei direkt auf deinem Laptop in einen frei gewählten Ordner speichern möchtest, öffne die App über einen SSH-Tunnel.
-
-Auf dem Laptop:
-
-```bash
-ssh -L 3010:localhost:3010 USER@192.168.178.68
-```
-
-Dann im Browser auf dem Laptop öffnen:
-
-```text
-http://localhost:3010
-```
-
-In Chrome oder Edge öffnet der Button `Speichern unter` dann den nativen Dateidialog. Bei direktem Zugriff über `http://192.168.178.68:3010` fällt der Browser je nach Sicherheitseinstellung auf den normalen Download-Ordner zurück.
 
 ## Ollama-Verbindung aus dem Container testen
 
@@ -127,13 +121,33 @@ In Chrome oder Edge öffnet der Button `Speichern unter` dann den nativen Dateid
 docker compose exec lernfeld-docx wget -qO- http://host.docker.internal:11434/api/tags
 ```
 
-Wenn hier Modelle als JSON erscheinen, ist die Verbindung sauber.
+Wenn hier Modelle als JSON erscheinen und `llama3.1:8b` gelistet ist, ist die Verbindung sauber.
+
+Die App zeigt denselben Zustand in der Oberflaeche als `Homelab-KI` Status an.
+
+## Speichern-unter-Dialog auf dem Laptop
+
+Ein echter Ordner-Auswahldialog ist im Browser nur auf `localhost` oder per HTTPS zuverlaessig erlaubt. Wenn du die Datei direkt auf deinem Laptop in einen frei gewaehlten Ordner speichern moechtest, oeffne die App ueber einen SSH-Tunnel.
+
+Auf dem Laptop:
+
+```bash
+ssh -L 3010:localhost:3010 USER@192.168.178.68
+```
+
+Dann im Browser:
+
+```text
+http://localhost:3010
+```
+
+Bei direktem Zugriff ueber `http://192.168.178.68:3010` faellt der Browser je nach Sicherheitseinstellung auf den normalen Download-Ordner zurueck.
 
 ## Dateien
 
-Die erzeugten DOCX-Dateien werden nicht auf dem ThinkCentre gespeichert. Beim Klick auf `Speichern unter` wählst du den Zielordner auf deinem Laptop im Browser aus.
+Die erzeugten DOCX-Dateien werden nicht im Container gespeichert. Beim Klick auf `Speichern unter` waehlst du den Zielordner im Browser aus.
 
-Uploads bleiben für die Verarbeitung auf dem Host sichtbar:
+Uploads bleiben fuer die Verarbeitung auf dem Host sichtbar:
 
 ```text
 /data/docker/lernfeld-docx/data/uploads
@@ -153,4 +167,34 @@ docker compose up -d --build
 ```bash
 cd /data/docker/lernfeld-docx
 docker compose down
+```
+
+## Troubleshooting
+
+Ollama lauscht nicht fuer Docker:
+
+```bash
+sudo ss -tlnp | grep 11434
+```
+
+Erwartet wird `0.0.0.0:11434`.
+
+Container erreicht Ollama nicht:
+
+```bash
+docker compose exec lernfeld-docx wget -qO- http://host.docker.internal:11434/api/tags
+```
+
+Wenn `host.docker.internal` nicht aufloest, pruefe in `docker-compose.yml`:
+
+```yaml
+extra_hosts:
+  - "host.docker.internal:host-gateway"
+```
+
+Modell fehlt:
+
+```bash
+ollama pull llama3.1:8b
+ollama list
 ```
