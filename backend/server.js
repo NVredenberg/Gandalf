@@ -58,6 +58,10 @@ app.use(cors());
 app.use(express.json({ limit: "4mb" }));
 app.use(express.static(frontendDir));
 
+app.get("/api/live", (_req, res) => {
+  res.json({ ok: true });
+});
+
 app.get("/api/health", async (_req, res) => {
   const ollamaConfig = getOllamaConfig();
   const ollamaStatus = await checkOllamaStatus();

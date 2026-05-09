@@ -1,6 +1,15 @@
 import { generateWithOllama } from "./ollamaClient.js";
 import { normalizeAiDocument, normalizeLearningDocument } from "../parser/schema.js";
 
+const CONTENT_SYSTEM_PROMPT =
+  "Du bist ein didaktischer Fachassistent fuer berufliche Bildung. " +
+  "Arbeite streng strukturiert, fachlich passend und gib nur valides JSON zurueck.";
+
+const STORY_SYSTEM_PROMPT =
+  "Du bist Autor fuer realistische Unterrichtsszenarien in der Berufsschule. " +
+  "Jede Szene muss fachlich zum Beruf, zu den Kompetenzen und zu den Inhalten passen. " +
+  "Erfinde keine branchenfremden Fachthemen.";
+
 export async function optimizeLearningDocument(input) {
   const document = normalizeLearningDocument(input);
   const optimized = await runContentOptimization(document);
@@ -12,49 +21,45 @@ export async function optimizeLearningDocument(input) {
 }
 
 // ---------------------------------------------------------------------------
-// KI-Kurzzusammenfassungen für die KI-Zuordnungstabelle
+// KI-Kurzzusammenfassungen fuer die KI-Zuordnungstabelle
 // ---------------------------------------------------------------------------
 
-/**
- * Erzeugt für jede Lernsituation eine kurze (≤ 15 Wörter) KI-Kompetenz-
- * zusammenfassung. Gibt ein Map von LS-ID → Zusammenfassungstext zurück.
- * Im Fehlerfall wird ein leeres Objekt zurückgegeben, damit der Renderer
- * auf den Fallback-Code ausweichen kann.
- */
 export async function generateKiSummariesForTable(lernsituationen) {
   if (!lernsituationen?.length) return {};
 
   const input = lernsituationen.map((ls) => ({
     id: ls.id,
-    kompetenzen: ls.kompetenzen
-      .map((k) => (k.tags.length ? `[${k.tags.join("][")}] ${k.text}` : k.text))
+    kompetenzen: ls.kompetenzen.map((k) =>
+      k.tags.length ? `[${k.tags.join("][")}] ${k.text}` : k.text
+    )
   }));
 
-  const prompt = `Du fasst KI-Kompetenzen von Lernsituationen für eine Übersichtstabelle zusammen.
+  const prompt = `Du fasst KI-Kompetenzen von Lernsituationen fuer eine Uebersichtstabelle zusammen.
 
-Format pro Lernsituation: Nenne die 2–3 wichtigsten Tätigkeiten als kurze Verben/Nomen, jeweils mit Tag in Klammern.
-Trenne mehrere Einträge mit Semikolon. Maximal 25 Wörter pro Zusammenfassung.
+Format pro Lernsituation: Nenne die 2-3 wichtigsten Taetigkeiten als kurze Verben/Nomen, jeweils mit Tag in Klammern.
+Trenne mehrere Eintraege mit Semikolon. Maximal 25 Woerter pro Zusammenfassung.
 
 Beispiel-Eingabe:
-{"id": "LS 5.1", "kompetenzen": ["[AK][IG] Kundenanfragen auswerten und fehlende Daten klären", "[MK] Kriterien für Angebotsvergleich festlegen"]}
+{"id": "LS 5.1", "kompetenzen": ["[AK][IG] Kundenanfragen auswerten und fehlende Daten klaeren", "[MK] Kriterien fuer Angebotsvergleich festlegen"]}
 
 Beispiel-Ausgabe:
-{"id": "LS 5.1", "summary": "Kundenanfragen auswerten, Datenlücken klären (AK, IG); Vergleichskriterien festlegen (MK)"}
+{"id": "LS 5.1", "summary": "Kundenanfragen auswerten, Datenluecken klaeren (AK, IG); Vergleichskriterien festlegen (MK)"}
 
 Regeln:
-- Nenne konkrete Tätigkeiten, keine abstrakten Kategorienamen wie "Anwendungskompetenz".
+- Nenne konkrete Taetigkeiten, keine abstrakten Kategorienamen wie "Anwendungskompetenz".
 - Tags (AK/IG/MK) am Ende der jeweiligen Gruppe in Klammern.
-- Kein erklärender Text, nur die Zusammenfassung.
+- Kein erklaerender Text, nur die Zusammenfassung.
 
 Eingabe:
 ${JSON.stringify(input, null, 2)}
 
-Antworte ausschließlich mit validem JSON, kein Markdown:
+Antworte ausschliesslich mit validem JSON, kein Markdown:
 [{"id": "LS X.X", "summary": "..."}, ...]`;
 
   try {
     const raw = await generateWithOllama(prompt, {
       format: "json",
+      system: CONTENT_SYSTEM_PROMPT,
       temperature: 0.05
     });
 
@@ -79,158 +84,192 @@ Antworte ausschließlich mit validem JSON, kein Markdown:
 async function runContentOptimization(document) {
   const responseText = await generateWithOllama(buildContentPrompt(document), {
     format: "json",
+    system: CONTENT_SYSTEM_PROMPT,
     temperature: 0.1
   });
   const parsed = parseJsonResponse(responseText);
   return normalizeAiDocument(document, parsed);
 }
 
-/**
- * Zweiter Durchlauf: Szenarien zu einer gemeinsamen Fallgeschichte vereinen.
- *
- * Kernregel: Das bestehende einstieg-Feld wird dem Modell NICHT übergeben.
- * Sieht das Modell den Originaltext, kürzt/editiert es ihn statt ihn neu
- * zu erfinden. Stattdessen bekommt es nur Handlungsprodukt + Inhalte als
- * inhaltlichen Anker und erfindet die Geschichte frei.
- * Temperature 0.4 für ausreichend kreative, aber kohärente Ausgabe.
- */
 async function runScenarioHarmonization(document) {
-  if (document.lernsituationen.length < 2) return document;
+  if (document.lernsituationen.length === 0) return document;
+
+  const storyContext = await generateStoryContext(document);
+  debugStoryContext(storyContext);
 
   const responseText = await generateWithOllama(
-    buildScenarioPrompt(document),
-    { format: "json", temperature: 0.4 }
+    buildScenarioPrompt(document, storyContext),
+    {
+      format: "json",
+      system: STORY_SYSTEM_PROMPT,
+      temperature: 0.32,
+      repeatPenalty: 1.08
+    }
   );
 
   const parsed = parseScenarioResponse(responseText, document.lernsituationen.length);
-  if (!parsed) return document; // Fallback bei Parse-Fehler
+  if (!parsed) return document;
 
-  // Nur einstieg-Felder aus dem Szenario-Ergebnis übernehmen
+  const byId = new Map(
+    parsed
+      .filter((entry) => entry?.id && entry?.einstieg)
+      .map((entry) => [normalizeId(entry.id), entry])
+  );
+
   const lernsituationen = document.lernsituationen.map((ls, index) => {
-    const incoming = parsed[index];
-    const newEinstieg = incoming?.einstieg?.trim();
+    const incoming = byId.get(normalizeId(ls.id)) || parsed[index];
+    const newEinstieg = cleanScenarioText(incoming?.einstieg);
     return newEinstieg ? { ...ls, einstieg: newEinstieg } : ls;
   });
 
   return { ...document, lernsituationen };
 }
 
+async function generateStoryContext(document) {
+  try {
+    const responseText = await generateWithOllama(buildStoryContextPrompt(document), {
+      format: "json",
+      system: STORY_SYSTEM_PROMPT,
+      temperature: 0.25,
+      repeatPenalty: 1.08
+    });
+
+    return normalizeStoryContext(parseJsonResponse(responseText), document);
+  } catch (error) {
+    console.warn("[StoryContext] Fehler beim Generieren:", error.message);
+    return fallbackStoryContext(document);
+  }
+}
+
 function buildContentPrompt(document) {
-  // Nur die Felder schicken die tatsächlich optimiert werden.
-  // methoden wird hier nicht angefasst → weglassen spart ~30 % Tokens.
-  // Kein Pretty-Print spart weitere ~15 % gegenüber null,2.
   const compact = {
     meta: document.meta,
     lernsituationen: document.lernsituationen.map((ls) => ({
       id: ls.id,
-      einstieg: ls.einstieg,
       handlungsprodukt: ls.handlungsprodukt,
       kompetenzen: ls.kompetenzen,
       inhalte: ls.inhalte
-      // methoden absichtlich weggelassen
     }))
   };
 
-  return `Du bist ein didaktischer Fachassistent.
-
-Du erhältst ein standardisiertes JSON für Lernfelddokumente.
+  return `Du erhaeltst ein standardisiertes JSON fuer Lernfelddokumente.
 
 Du darfst:
-- Inhalte fachlich und didaktisch prüfen
-- Kompetenzen sinnvoll ergänzen
-- Einstiegsszenarien sprachlich verbessern
+- Inhalte fachlich und didaktisch pruefen
+- Kompetenzen sinnvoll ergaenzen
+- Handlungsprodukte fachlich praezisieren, wenn sie zu unklar sind
 
 Du darfst NICHT:
+- Einstiegsszenarien schreiben oder veraendern
 - Tabellen entwerfen oder Layout beschreiben
-- Neue Felder hinzufügen
-- Die Reihenfolge oder Anzahl der Lernsituationen verändern
-- IDs der Lernsituationen verändern
+- Neue Felder hinzufuegen
+- Die Reihenfolge oder Anzahl der Lernsituationen veraendern
+- IDs der Lernsituationen veraendern
+- Inhalte erfinden, die nicht zum Beruf, Lernfeld oder den vorhandenen Kompetenzen passen
 
-Tags dürfen nur AK, IG oder MK sein.
+Tags duerfen nur AK, IG oder MK sein.
 Jede Kompetenz muss mindestens einen Tag behalten oder erhalten.
 
-Gib ausschließlich valides JSON zurück.
+Gib ausschliesslich valides JSON zurueck.
 Kein Markdown, keine Kommentare.
 
-Schlüssel: meta, lernsituationen, id, einstieg, handlungsprodukt, kompetenzen, text, tags, inhalte.
+Schluessel: meta, lernsituationen, id, handlungsprodukt, kompetenzen, text, tags, inhalte.
 
 JSON:
 ${JSON.stringify(compact)}`;
 }
 
-/**
- * Fokussierter Prompt – fordert AUSSCHLIESSLICH die neuen einstieg-Felder.
- * Kleineres Ausgabeformat → weniger Halluzinationen, zuverlässigeres Parsing.
- */
-function buildScenarioPrompt(document) {
-  const lsCount = document.lernsituationen.length;
-
-  // WICHTIG: Kein einstieg-Feld übergeben – nur Handlungsprodukt + Inhalte.
-  // Sobald das Modell den Originaltext sieht, editiert/kürzt es ihn statt
-  // eine neue Geschichte zu erfinden.
-  const situationList = document.lernsituationen
-    .map((ls, i) => {
-      return `${i + 1}. ${ls.id}
-   Handlungsprodukt: ${ls.handlungsprodukt || "-"}
-   Inhalte: ${ls.inhalte || "-"}`;
-    })
+function buildStoryContextPrompt(document) {
+  const situations = document.lernsituationen
+    .map((ls, index) => `${index + 1}. ${ls.id}
+Handlungsprodukt: ${ls.handlungsprodukt || "-"}
+Kompetenzen:
+${formatCompetences(ls)}
+Inhalte: ${ls.inhalte || "-"}`)
     .join("\n\n");
 
-  return `Du bist Autor von Unterrichtsszenarien für die Berufsschule.
-
-AUFGABE: Erfinde eine zusammenhängende Fallgeschichte für ${lsCount} Lernsituationen.
-
-BEISPIEL – so soll das Ergebnis aussehen (für einen anderen Beruf):
-Betrieb: "DataFlow GmbH, Bochum" – IT-Dienstleister
-LS 1: "Die DataFlow GmbH aus Bochum erhält den Auftrag, das Netzwerk der Stadtwerke Bochum zu modernisieren. Projektleiterin Sandra Keller beauftragt das Azubi-Team mit der Bestandsaufnahme. Die Auszubildenden dokumentieren die vorhandene Infrastruktur und erstellen einen ersten Statusbericht."
-LS 2: "Auf Basis des Statusberichts aus LS 1 legt Sandra Keller ein Budget fest. Das Azubi-Team soll nun konkrete Angebote von drei Netzwerkhardware-Lieferanten einholen und vergleichen. Bis Freitag muss eine Empfehlung vorliegen."
-LS 3: "Der Angebotsvergleich ist abgeschlossen. Sandra Keller hat Lieferant B ausgewählt. Jetzt konfiguriert das Team die ersten Switches und dokumentiert die neue Netzwerktopologie für das Stadtwerke-Projekthandbuch."
-
-PFLICHTREGELN für deine Geschichte:
-1. Erfinde einen passenden Betrieb mit konkretem Namen und Standort.
-2. Erfinde 1–2 Personen (z.B. Ausbilder, Kundin), die in allen LS vorkommen.
-3. LS 1 startet den Auftrag neu – kein Vorwissen nötig.
-4. Jede folgende LS erwähnt konkret, was in der vorherigen passiert ist.
-5. Der rote Faden ist dasselbe Projekt oder derselbe Kunde.
-6. Jedes Szenario: 3–4 Sätze, Gegenwartsform, konkret und lebendig.
-7. Passe den Betrieb zum Beruf an – kein branchenfremder Kontext.
+  return `Entwickle einen realistischen Rahmen fuer eine zusammenhaengende Fallgeschichte.
 
 Beruf: ${document.meta.beruf || "-"}
+Fach: ${document.meta.fach || "-"}
 Lernfeld: ${document.meta.lernfeld || "-"}
 
-Lernsituationen (Handlungsprodukte und Inhalte sind fest vorgegeben):
+Pflicht:
+- Betrieb/Einrichtung muss zum Beruf passen.
+- Leitauftrag muss aus Handlungsprodukten, Kompetenzen und Inhalten ableitbar sein.
+- Keine IT-Firma, Netzwerkmodernisierung oder Softwareentwicklung, ausser Beruf oder Inhalte verlangen das ausdruecklich.
+- Der Rahmen muss fuer alle Lernsituationen funktionieren.
+- Keine Einstiegsszenarien schreiben, nur den festen Kontext.
+
+Lernsituationen:
+${situations}
+
+Antworte NUR mit JSON:
+{
+  "betrieb": "Name des passenden Betriebs oder der Einrichtung",
+  "ort": "konkreter Ort",
+  "branche": "kurze Branchenbeschreibung",
+  "hauptpersonen": [
+    {"name": "Vorname Nachname", "rolle": "Rolle im Betrieb oder beim Kunden"}
+  ],
+  "kundeOderAdressat": "Kunde, Abteilung, Patient, Gast, Mandant oder anderer passender Adressat",
+  "leitauftrag": "konkreter Auftrag, der durch alle Lernsituationen fuehrt",
+  "roterFaden": "ein Satz, wie die Lernsituationen sachlogisch aufeinander aufbauen"
+}`;
+}
+
+function buildScenarioPrompt(document, context) {
+  const situationList = document.lernsituationen
+    .map((ls, index) => `${index + 1}. ${ls.id}
+Handlungsprodukt: ${ls.handlungsprodukt || "-"}
+Kompetenzen:
+${formatCompetences(ls)}
+Inhalte: ${ls.inhalte || "-"}
+Methoden: ${ls.methoden || "-"}`)
+    .join("\n\n");
+
+  return `Schreibe passende Einstiegsszenarien fuer die Lernsituationen.
+
+Kontext ist FEST und darf nicht ausgetauscht werden:
+- Betrieb/Einrichtung: ${context.betrieb}
+- Ort: ${context.ort}
+- Branche: ${context.branche}
+- Hauptpersonen: ${context.hauptpersonen.join("; ")}
+- Adressat/Kunde: ${context.kundeOderAdressat}
+- Leitauftrag: ${context.leitauftrag}
+- Roter Faden: ${context.roterFaden}
+
+Beruf: ${document.meta.beruf || "-"}
+Fach: ${document.meta.fach || "-"}
+Lernfeld: ${document.meta.lernfeld || "-"}
+
+Regeln:
+1. Schreibe pro LS genau 3 Saetze in der Gegenwartsform.
+2. Jeder Einstieg muss konkret zum jeweiligen Handlungsprodukt fuehren.
+3. Jeder Einstieg muss mindestens eine konkrete Kompetenz-Taetigkeit und einen Inhaltsbegriff der LS aufgreifen.
+4. LS 1 startet den Auftrag. Jede weitere LS nennt ein konkretes Ergebnis aus der vorherigen LS.
+5. Keine branchenfremden Elemente einfuehren. Keine IT-Beispiele, wenn Beruf/Inhalte keine IT verlangen.
+6. Keine Meta-Sprache wie "in dieser Lernsituation", keine Tabellen, keine Erklaerungen.
+7. Behalte die IDs exakt bei.
+
+Lernsituationen:
 ${situationList}
 
-Antworte NUR mit diesem JSON, kein Markdown, kein erklärender Text:
+Antworte NUR mit diesem JSON, kein Markdown:
 {
   "scenarios": [
-    {"id": "LS X.X", "einstieg": "3-4 Sätze der Geschichte..."},
-    ...
+    {"id": "LS X.X", "einstieg": "Genau 3 Saetze..."}
   ]
 }`;
 }
 
-/**
- * Parst das kompakte Szenario-Antwortformat { scenarios: [...] }
- * und gibt ein Array zurück – oder null bei Fehler.
- */
 function parseScenarioResponse(raw, expectedCount) {
   try {
-    const cleaned = String(raw || "")
-      .replace(/^```(?:json)?\s*/i, "")
-      .replace(/\s*```$/i, "")
-      .trim();
-
-    const first = cleaned.indexOf("{");
-    const last = cleaned.lastIndexOf("}");
-    if (first < 0 || last <= first) return null;
-
-    const parsed = JSON.parse(cleaned.slice(first, last + 1));
+    const parsed = parseJsonResponse(raw);
     const scenarios = parsed?.scenarios;
 
     if (!Array.isArray(scenarios) || scenarios.length === 0) return null;
 
-    // Warnung wenn die Anzahl nicht stimmt, aber trotzdem weitermachen
     if (scenarios.length !== expectedCount) {
       console.warn(
         `[Scenario] Erwartet ${expectedCount} Szenarien, erhalten ${scenarios.length}`
@@ -244,11 +283,77 @@ function parseScenarioResponse(raw, expectedCount) {
   }
 }
 
-function parseJsonArray(raw) {
-  const cleaned = String(raw || "")
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/\s*```$/i, "")
+function normalizeStoryContext(value, document) {
+  const fallback = fallbackStoryContext(document);
+  const people = Array.isArray(value?.hauptpersonen)
+    ? value.hauptpersonen
+        .map((person) => {
+          if (typeof person === "string") return cleanShortText(person);
+          const name = cleanShortText(person?.name);
+          const role = cleanShortText(person?.rolle);
+          return [name, role].filter(Boolean).join(" - ");
+        })
+        .filter(Boolean)
+    : [];
+
+  return {
+    betrieb: cleanShortText(value?.betrieb) || fallback.betrieb,
+    ort: cleanShortText(value?.ort) || fallback.ort,
+    branche: cleanShortText(value?.branche) || fallback.branche,
+    hauptpersonen: people.length ? people.slice(0, 2) : fallback.hauptpersonen,
+    kundeOderAdressat:
+      cleanShortText(value?.kundeOderAdressat) || fallback.kundeOderAdressat,
+    leitauftrag: cleanShortText(value?.leitauftrag, 260) || fallback.leitauftrag,
+    roterFaden: cleanShortText(value?.roterFaden, 260) || fallback.roterFaden
+  };
+}
+
+function fallbackStoryContext(document) {
+  const beruf = document.meta.beruf || "Ausbildungsbetrieb";
+  const lernfeld = document.meta.lernfeld || "das Lernfeld";
+
+  return {
+    betrieb: `Ausbildungsbetrieb ${beruf}`,
+    ort: "Dortmund",
+    branche: beruf,
+    hauptpersonen: ["Mara Schneider - Ausbilderin"],
+    kundeOderAdressat: "interner Auftraggeber",
+    leitauftrag: `Ein praxisnaher Auftrag zu ${lernfeld}`,
+    roterFaden:
+      "Die Lernsituationen bauen fachlich aufeinander auf und fuehren Schritt fuer Schritt zum Handlungsprodukt."
+  };
+}
+
+function formatCompetences(ls) {
+  if (!ls.kompetenzen?.length) return "-";
+  return ls.kompetenzen
+    .map((competence) => {
+      const tags = competence.tags?.length ? `[${competence.tags.join("][")}] ` : "";
+      return `- ${tags}${competence.text}`;
+    })
+    .join("\n");
+}
+
+function cleanScenarioText(value) {
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .replace(/^["']|["']$/g, "")
     .trim();
+}
+
+function cleanShortText(value, maxLength = 160) {
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, maxLength);
+}
+
+function normalizeId(value) {
+  return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function parseJsonArray(raw) {
+  const cleaned = cleanJsonString(raw);
 
   try {
     const parsed = JSON.parse(cleaned);
@@ -268,23 +373,33 @@ function parseJsonArray(raw) {
 }
 
 function parseJsonResponse(value) {
-  const raw = String(value || "").trim();
-  const withoutFence = raw
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/\s*```$/i, "")
-    .trim();
+  const cleaned = cleanJsonString(value);
 
   try {
-    return JSON.parse(withoutFence);
+    return JSON.parse(cleaned);
   } catch {
-    const first = withoutFence.indexOf("{");
-    const last = withoutFence.lastIndexOf("}");
+    const first = cleaned.indexOf("{");
+    const last = cleaned.lastIndexOf("}");
     if (first >= 0 && last > first) {
-      return JSON.parse(withoutFence.slice(first, last + 1));
+      return JSON.parse(cleaned.slice(first, last + 1));
     }
   }
 
-  throw new Error("Ollama hat kein gültiges JSON zurückgegeben.");
+  throw new Error("Ollama hat kein gueltiges JSON zurueckgegeben.");
+}
+
+function cleanJsonString(value) {
+  return String(value || "")
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+}
+
+function debugStoryContext(context) {
+  if (process.env.AI_DEBUG !== "1") return;
+
+  console.log("[AI_DEBUG] Story-Kontext");
+  console.log(JSON.stringify(context, null, 2));
 }
 
 function debugScenarioChanges(original, optimized, harmonized) {

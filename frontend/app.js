@@ -141,12 +141,12 @@ function renderDocument() {
     return;
   }
 
-  for (const situation of doc.lernsituationen) {
-    situationList.append(renderSituationCard(situation));
+  for (const [index, situation] of doc.lernsituationen.entries()) {
+    situationList.append(renderSituationCard(situation, index));
   }
 }
 
-function renderSituationCard(situation) {
+function renderSituationCard(situation, index) {
   const card = document.createElement("article");
   card.className = "situation-card";
 
@@ -156,7 +156,12 @@ function renderSituationCard(situation) {
   header.append(title, renderTags(situation.kompetenzen));
 
   const details = document.createElement("dl");
-  appendDetail(details, "Einstieg", situation.einstieg);
+  appendEditableDetail(details, "Einstieg", situation.einstieg, (value) => {
+    if (state.document?.lernsituationen?.[index]) {
+      state.document.lernsituationen[index].einstieg = value;
+      jsonPreview.textContent = JSON.stringify(state.document, null, 2);
+    }
+  });
   appendDetail(details, "Handlungsprodukt", situation.handlungsprodukt);
   appendDetail(details, "Kompetenzen", situation.kompetenzen.map((item) => item.text).join("\n"));
   appendDetail(details, "Inhalte", situation.inhalte);
@@ -187,6 +192,21 @@ function appendDetail(parent, label, value) {
 
   const dd = document.createElement("dd");
   dd.textContent = value || "-";
+
+  parent.append(dt, dd);
+}
+
+function appendEditableDetail(parent, label, value, onChange) {
+  const dt = document.createElement("dt");
+  dt.textContent = label;
+
+  const dd = document.createElement("dd");
+  const textarea = document.createElement("textarea");
+  textarea.className = "scenario-editor";
+  textarea.value = value || "";
+  textarea.rows = 5;
+  textarea.addEventListener("input", () => onChange(textarea.value));
+  dd.append(textarea);
 
   parent.append(dt, dd);
 }

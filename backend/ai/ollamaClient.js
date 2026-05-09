@@ -55,8 +55,10 @@ export async function checkOllamaStatus(timeoutMs = 5000) {
 }
 
 export async function generateWithOllama(prompt, settings = {}) {
+  const model = settings.model || OLLAMA_MODEL;
+  const startedAt = Date.now();
   const body = {
-    model: settings.model || OLLAMA_MODEL,
+    model,
     prompt,
     stream: false,
     think: false,
@@ -71,6 +73,14 @@ export async function generateWithOllama(prompt, settings = {}) {
   if (settings.format) {
     body.format = settings.format;
   }
+
+  if (settings.system) {
+    body.system = settings.system;
+  }
+
+  console.log(
+    `[Ollama] Anfrage gestartet: model=${model}, prompt=${prompt.length} Zeichen, ctx=${body.options.num_ctx}`
+  );
 
   let response;
   try {
@@ -96,6 +106,11 @@ export async function generateWithOllama(prompt, settings = {}) {
       `Ollama hat keine gueltige JSON-Antwort zurueckgegeben: ${response.bodyText.slice(0, 500)}`
     );
   }
+
+  console.log(
+    `[Ollama] Antwort erhalten nach ${formatDuration(Date.now() - startedAt)}: ` +
+      `${(response.json.response || "").length} Zeichen`
+  );
 
   return response.json.response || "";
 }
@@ -221,4 +236,11 @@ function readPositiveInteger(value, fallback) {
 
 function isHttpOk(statusCode) {
   return statusCode >= 200 && statusCode < 300;
+}
+
+function formatDuration(ms) {
+  const seconds = Math.round(ms / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds % 60;
+  return minutes > 0 ? `${minutes}m ${rest}s` : `${rest}s`;
 }

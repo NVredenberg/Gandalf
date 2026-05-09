@@ -305,6 +305,23 @@ h2 {
   white-space: pre-wrap;
 }
 
+.scenario-editor {
+  width: 100%;
+  min-height: 112px;
+  resize: vertical;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px 12px;
+  background: #ffffff;
+  color: var(--text);
+  line-height: 1.45;
+}
+
+.scenario-editor:focus {
+  outline: 2px solid rgba(37, 99, 235, 0.2);
+  border-color: var(--blue);
+}
+
 .json-panel {
   padding: 14px;
 }
