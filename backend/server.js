@@ -20,11 +20,9 @@ const frontendDir = path.join(rootDir, "frontend");
 const allowedExtensions = new Set([".md", ".docx"]);
 const port = Number(process.env.PORT || 3000);
 
-// Timeout für KI-Routen: 25 Minuten.
-// qwen3:14b-q8_0 auf CPU braucht beim ersten Aufruf lange zum Laden
-// und mehrere Minuten pro Prompt. Drei Prompts hintereinander (Content,
-// Szenario, KI-Summaries) können zusammen 15–20 Minuten dauern.
-const AI_TIMEOUT_MS = 25 * 60 * 1000;
+// Lange KI-Routen duerfen mehrere Ollama-Aufrufe hintereinander ausfuehren.
+// Standard: 45 Minuten, konfigurierbar per AI_TIMEOUT_MS.
+const AI_TIMEOUT_MS = readPositiveInteger(process.env.AI_TIMEOUT_MS, 45 * 60 * 1000);
 
 await fs.mkdir(uploadsDir, { recursive: true });
 
@@ -101,7 +99,7 @@ app.post("/api/upload", upload.single("file"), async (req, res, next) => {
 
 // KI-Routen mit verlängertem Timeout
 app.post("/api/analyze", (req, res, next) => {
-  // Socket-Timeout auf 25 Minuten setzen damit die Verbindung nicht
+  // Socket-Timeout erhoehen, damit die Verbindung nicht
   // durch Node / Docker / den Browser-Proxy unterbrochen wird
   req.socket.setTimeout(AI_TIMEOUT_MS);
   res.setTimeout(AI_TIMEOUT_MS);
@@ -158,4 +156,9 @@ function buildOutputFileName(document) {
     .slice(0, 80);
 
   return `${safeBase || "lernfeld-dokument"}.docx`;
+}
+
+function readPositiveInteger(value, fallback) {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }

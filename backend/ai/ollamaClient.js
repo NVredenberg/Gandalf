@@ -1,44 +1,40 @@
+import http from "node:http";
+import https from "node:https";
+
 const OLLAMA_URL = process.env.OLLAMA_URL || "http://localhost:11434/api/generate";
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL || "llama3.1:8b";
 const OLLAMA_TAGS_URL = buildTagsUrl(OLLAMA_URL);
 const OLLAMA_NUM_CTX = readPositiveInteger(process.env.OLLAMA_NUM_CTX, 16384);
-
-// Großzügiger Timeout für schwere Modelle auf CPU.
-// qwen3:14b-q8_0 braucht beim ersten Aufruf 30–60 s nur zum Laden,
-// danach mehrere Minuten für lange Prompts (Szenario-Harmonisierung).
-// 20 Minuten decken auch den worst case ab.
-const TIMEOUT_MS = 20 * 60 * 1000;
+const OLLAMA_TIMEOUT_MS = readPositiveInteger(
+  process.env.OLLAMA_TIMEOUT_MS,
+  30 * 60 * 1000
+);
 
 export function getOllamaConfig() {
   return {
     url: OLLAMA_URL,
     model: OLLAMA_MODEL,
     tagsUrl: OLLAMA_TAGS_URL,
-    numCtx: OLLAMA_NUM_CTX
+    numCtx: OLLAMA_NUM_CTX,
+    timeoutMs: OLLAMA_TIMEOUT_MS
   };
 }
 
 export async function checkOllamaStatus(timeoutMs = 5000) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-
   try {
-    const response = await fetch(OLLAMA_TAGS_URL, {
-      signal: controller.signal
-    });
+    const response = await requestJson(OLLAMA_TAGS_URL, { timeoutMs });
 
-    if (!response.ok) {
+    if (!isHttpOk(response.statusCode)) {
       return {
         ok: false,
         url: OLLAMA_TAGS_URL,
         model: OLLAMA_MODEL,
-        error: `Ollama-Fehler ${response.status}: ${await response.text()}`
+        error: `Ollama-Fehler ${response.statusCode}: ${response.bodyText}`
       };
     }
 
-    const data = await response.json();
-    const models = Array.isArray(data.models)
-      ? data.models.map((item) => item.name).filter(Boolean)
+    const models = Array.isArray(response.json?.models)
+      ? response.json.models.map((item) => item.name).filter(Boolean)
       : [];
 
     return {
@@ -55,21 +51,15 @@ export async function checkOllamaStatus(timeoutMs = 5000) {
       model: OLLAMA_MODEL,
       error: buildOllamaConnectionMessage(error)
     };
-  } finally {
-    clearTimeout(timer);
   }
 }
 
 export async function generateWithOllama(prompt, settings = {}) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-
   const body = {
     model: settings.model || OLLAMA_MODEL,
     prompt,
     stream: false,
-    think: false,   // Qwen3 Thinking-Modus deaktivieren — für JSON-Aufgaben
-                    // unnötig und sprengt den 4096-Token-Standardkontext
+    think: false,
     options: {
       temperature: settings.temperature ?? 0.1,
       top_p: settings.topP ?? 0.85,
@@ -84,32 +74,93 @@ export async function generateWithOllama(prompt, settings = {}) {
 
   let response;
   try {
-    response = await fetch(OLLAMA_URL, {
+    response = await requestJson(OLLAMA_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-      signal: controller.signal
+      body,
+      timeoutMs: OLLAMA_TIMEOUT_MS
     });
   } catch (error) {
-    if (error.name === "AbortError") {
-      throw new Error(
-        `Ollama Timeout nach ${TIMEOUT_MS / 60000} Minuten. ` +
-        "Modell läuft noch oder ist beim Laden hängengeblieben. " +
-        "Prüfe: sudo systemctl status ollama"
-      );
+    if (error.name === "TimeoutError") {
+      throw new Error(buildOllamaTimeoutMessage());
     }
+
     throw new Error(buildOllamaConnectionMessage(error));
-  } finally {
-    clearTimeout(timer);
   }
 
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`Ollama-Fehler ${response.status}: ${text}`);
+  if (!isHttpOk(response.statusCode)) {
+    throw new Error(`Ollama-Fehler ${response.statusCode}: ${response.bodyText}`);
   }
 
-  const data = await response.json();
-  return data.response || "";
+  if (!response.json) {
+    throw new Error(
+      `Ollama hat keine gueltige JSON-Antwort zurueckgegeben: ${response.bodyText.slice(0, 500)}`
+    );
+  }
+
+  return response.json.response || "";
+}
+
+function requestJson(url, { method = "GET", body, timeoutMs }) {
+  return new Promise((resolve, reject) => {
+    let parsedUrl;
+    try {
+      parsedUrl = new URL(url);
+    } catch (error) {
+      reject(error);
+      return;
+    }
+
+    const bodyText = body === undefined ? undefined : JSON.stringify(body);
+    const transport = parsedUrl.protocol === "https:" ? https : http;
+    const request = transport.request(
+      parsedUrl,
+      {
+        method,
+        headers: bodyText
+          ? {
+              "Content-Type": "application/json",
+              "Content-Length": Buffer.byteLength(bodyText)
+            }
+          : undefined
+      },
+      (response) => {
+        const chunks = [];
+        response.setEncoding("utf8");
+        response.on("data", (chunk) => chunks.push(chunk));
+        response.on("end", () => {
+          const responseText = chunks.join("");
+          let json;
+
+          if (responseText) {
+            try {
+              json = JSON.parse(responseText);
+            } catch {
+              json = undefined;
+            }
+          }
+
+          resolve({
+            statusCode: response.statusCode || 0,
+            bodyText: responseText,
+            json
+          });
+        });
+      }
+    );
+
+    request.on("error", reject);
+    request.setTimeout(timeoutMs, () => {
+      const error = new Error(`Timeout nach ${timeoutMs / 60000} Minuten`);
+      error.name = "TimeoutError";
+      request.destroy(error);
+    });
+
+    if (bodyText) {
+      request.write(bodyText);
+    }
+
+    request.end();
+  });
 }
 
 function buildOllamaConnectionMessage(error) {
@@ -119,7 +170,7 @@ function buildOllamaConnectionMessage(error) {
     `Modell: ${OLLAMA_MODEL}`,
     `Kontext: ${OLLAMA_NUM_CTX}`
   ];
-  const cause = describeFetchCause(error);
+  const cause = describeConnectionCause(error);
 
   if (cause) {
     parts.push(`Ursache: ${cause}`);
@@ -137,9 +188,17 @@ function buildOllamaConnectionMessage(error) {
   return parts.join(" ");
 }
 
-function describeFetchCause(error) {
+function buildOllamaTimeoutMessage() {
+  return (
+    `Ollama Timeout nach ${OLLAMA_TIMEOUT_MS / 60000} Minuten. ` +
+    "Das Modell laeuft noch, laedt zu lange oder ist haengengeblieben. " +
+    "Pruefe auf dem Homelab-Server: ollama ps und sudo systemctl status ollama"
+  );
+}
+
+function describeConnectionCause(error) {
   const cause = error.cause;
-  const details = [cause?.code, cause?.message].filter(Boolean);
+  const details = [error.code, cause?.code, cause?.message].filter(Boolean);
   return [...new Set(details)].join(" - ");
 }
 
@@ -158,4 +217,8 @@ function buildTagsUrl(generateUrl) {
 function readPositiveInteger(value, fallback) {
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function isHttpOk(statusCode) {
+  return statusCode >= 200 && statusCode < 300;
 }
