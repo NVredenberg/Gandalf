@@ -19,6 +19,12 @@ const frontendDir = path.join(rootDir, "frontend");
 const allowedExtensions = new Set([".md", ".docx"]);
 const port = Number(process.env.PORT || 3000);
 
+// Timeout für KI-Routen: 25 Minuten.
+// qwen3:14b-q8_0 auf CPU braucht beim ersten Aufruf lange zum Laden
+// und mehrere Minuten pro Prompt. Drei Prompts hintereinander (Content,
+// Szenario, KI-Summaries) können zusammen 15–20 Minuten dauern.
+const AI_TIMEOUT_MS = 25 * 60 * 1000;
+
 await fs.mkdir(uploadsDir, { recursive: true });
 
 const storage = multer.diskStorage({
@@ -56,8 +62,8 @@ app.use(express.static(frontendDir));
 app.get("/api/health", (_req, res) => {
   res.json({
     ok: true,
-    ollama: "http://localhost:11434/api/generate",
-    model: "llama3.1:8b"
+    ollama: process.env.OLLAMA_URL || "http://localhost:11434/api/generate",
+    model: process.env.OLLAMA_MODEL || "llama3.1:8b"
   });
 });
 
@@ -88,18 +94,25 @@ app.post("/api/upload", upload.single("file"), async (req, res, next) => {
   }
 });
 
-app.post("/api/analyze", async (req, res, next) => {
-  try {
+// KI-Routen mit verlängertem Timeout
+app.post("/api/analyze", (req, res, next) => {
+  // Socket-Timeout auf 25 Minuten setzen damit die Verbindung nicht
+  // durch Node / Docker / den Browser-Proxy unterbrochen wird
+  req.socket.setTimeout(AI_TIMEOUT_MS);
+  res.setTimeout(AI_TIMEOUT_MS);
+
+  (async () => {
     const document = normalizeLearningDocument(req.body?.document);
     const optimized = await optimizeLearningDocument(document);
     res.json({ document: optimized });
-  } catch (error) {
-    next(error);
-  }
+  })().catch(next);
 });
 
-app.post("/api/render", async (req, res, next) => {
-  try {
+app.post("/api/render", (req, res, next) => {
+  req.socket.setTimeout(AI_TIMEOUT_MS);
+  res.setTimeout(AI_TIMEOUT_MS);
+
+  (async () => {
     const document = normalizeLearningDocument(req.body?.document);
     const buffer = await renderLearningDocument(document);
     const fileName = buildOutputFileName(document);
@@ -110,9 +123,7 @@ app.post("/api/render", async (req, res, next) => {
     );
     res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
     res.send(buffer);
-  } catch (error) {
-    next(error);
-  }
+  })().catch(next);
 });
 
 app.get("*", (_req, res) => {
