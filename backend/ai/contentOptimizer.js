@@ -116,6 +116,21 @@ async function runScenarioHarmonization(document) {
 }
 
 function buildContentPrompt(document) {
+  // Nur die Felder schicken die tatsächlich optimiert werden.
+  // methoden wird hier nicht angefasst → weglassen spart ~30 % Tokens.
+  // Kein Pretty-Print spart weitere ~15 % gegenüber null,2.
+  const compact = {
+    meta: document.meta,
+    lernsituationen: document.lernsituationen.map((ls) => ({
+      id: ls.id,
+      einstieg: ls.einstieg,
+      handlungsprodukt: ls.handlungsprodukt,
+      kompetenzen: ls.kompetenzen,
+      inhalte: ls.inhalte
+      // methoden absichtlich weggelassen
+    }))
+  };
+
   return `Du bist ein didaktischer Fachassistent.
 
 Du erhältst ein standardisiertes JSON für Lernfelddokumente.
@@ -137,10 +152,10 @@ Jede Kompetenz muss mindestens einen Tag behalten oder erhalten.
 Gib ausschließlich valides JSON zurück.
 Kein Markdown, keine Kommentare.
 
-Schlüssel: meta, lernsituationen, id, einstieg, handlungsprodukt, kompetenzen, text, tags, inhalte, methoden.
+Schlüssel: meta, lernsituationen, id, einstieg, handlungsprodukt, kompetenzen, text, tags, inhalte.
 
 JSON:
-${JSON.stringify(document, null, 2)}`;
+${JSON.stringify(compact)}`;
 }
 
 /**

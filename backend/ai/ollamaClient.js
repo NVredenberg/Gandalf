@@ -21,7 +21,7 @@ export async function generateWithOllama(prompt, settings = {}) {
       temperature: settings.temperature ?? 0.1,
       top_p: settings.topP ?? 0.85,
       repeat_penalty: settings.repeatPenalty ?? 1.05,
-      num_ctx: 8192  // Kontext verdoppeln als Absicherung für lange Prompts
+      num_ctx: 16384  // Prompt ist ~8259 Tokens; 8192 ließ keinen Platz für Output → 500
     }
   };
 
