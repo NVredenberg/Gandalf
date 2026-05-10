@@ -122,8 +122,26 @@ h2 {
   border-color: var(--blue);
 }
 
+.button.danger {
+  border-color: #fca5a5;
+  background: #fff7f7;
+  color: #991b1b;
+}
+
+.button.danger:not(:disabled):hover {
+  border-color: #ef4444;
+  background: #fee2e2;
+}
+
+.button.compact {
+  min-height: 34px;
+  padding: 0 10px;
+  font-size: 0.86rem;
+}
+
 .upload-panel,
 .meta-panel,
+.rag-panel,
 .json-panel,
 .situation-card {
   border: 1px solid var(--line);
@@ -241,6 +259,53 @@ h2 {
 .meta-panel strong {
   display: block;
   overflow-wrap: anywhere;
+}
+
+.rag-panel {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.75fr) minmax(0, 1.2fr) auto;
+  gap: 14px;
+  align-items: center;
+  margin-bottom: 22px;
+  padding: 14px;
+}
+
+.rag-summary span,
+.rag-summary small {
+  display: block;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.rag-summary strong {
+  display: block;
+  margin: 3px 0;
+}
+
+.rag-recent {
+  min-width: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1.35;
+}
+
+.rag-recent ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.rag-recent li {
+  overflow-wrap: anywhere;
+}
+
+.rag-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
 }
 
 .meta-input,
@@ -401,8 +466,13 @@ h2 {
   }
 
   .meta-panel,
+  .rag-panel,
   .content-grid {
     grid-template-columns: 1fr;
+  }
+
+  .rag-actions {
+    justify-content: stretch;
   }
 
   .situation-card dl {

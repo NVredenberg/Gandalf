@@ -1,8 +1,11 @@
 const state = {
   document: null,
   fileName: "",
-  selectedModel: ""
+  selectedModel: "",
+  ragDirty: false
 };
+
+let jsonPreviewTimer = null;
 
 const fileInput = document.querySelector("#fileInput");
 const fileName = document.querySelector("#fileName");
@@ -16,6 +19,12 @@ const analyzeButton = document.querySelector("#analyzeButton");
 const renderButton = document.querySelector("#renderButton");
 const situationList = document.querySelector("#situationList");
 const jsonPreview = document.querySelector("#jsonPreview");
+const ragCount = document.querySelector("#ragCount");
+const ragDetails = document.querySelector("#ragDetails");
+const ragRecent = document.querySelector("#ragRecent");
+const ragRefreshButton = document.querySelector("#ragRefreshButton");
+const ragReindexButton = document.querySelector("#ragReindexButton");
+const ragResetButton = document.querySelector("#ragResetButton");
 
 const metaFields = {
   beruf: document.querySelector("#metaBeruf"),
@@ -29,13 +38,55 @@ for (const [key, input] of Object.entries(metaFields)) {
   input.addEventListener("input", () => {
     if (!state.document) return;
     state.document.meta[key] = input.value;
-    refreshJsonPreview();
+    setRagDirty(true);
+    scheduleJsonPreviewRefresh();
   });
 }
 
 modelSelect.addEventListener("change", () => {
   state.selectedModel = modelSelect.value;
   ollamaDetails.textContent = state.selectedModel || "Kein Modell";
+});
+
+ragRefreshButton.addEventListener("click", async () => {
+  await loadRagStatus({ announce: true });
+});
+
+ragReindexButton.addEventListener("click", async () => {
+  if (!state.document) return;
+
+  setBusy(true, "Aktuelles Dokument wird indexiert...");
+  try {
+    const response = await fetch("/api/rag/reindex", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ document: state.document })
+    });
+    const payload = await readJsonResponse(response);
+    renderRagStatus(payload.status);
+    setRagDirty(false);
+    setStatus(`${payload.indexed} Lernsituation(en) indexiert.`);
+  } catch (error) {
+    setStatus(error.message);
+  } finally {
+    setBusy(false);
+  }
+});
+
+ragResetButton.addEventListener("click", async () => {
+  if (!window.confirm("RAG-Speicher wirklich leeren?")) return;
+
+  setBusy(true, "RAG-Speicher wird geleert...");
+  try {
+    const response = await fetch("/api/rag/reset", { method: "DELETE" });
+    const payload = await readJsonResponse(response);
+    renderRagStatus(payload.status);
+    setStatus(`${payload.deleted} Beispiel(e) entfernt.`);
+  } catch (error) {
+    setStatus(error.message);
+  } finally {
+    setBusy(false);
+  }
 });
 
 fileInput.addEventListener("change", async () => {
@@ -52,22 +103,25 @@ scenariosButton.addEventListener("click", async () => {
     return;
   }
 
+  const progress = openProgressStream();
   setBusy(true, "Szenarien werden generiert...");
 
   try {
     const response = await fetch("/api/scenarios", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(requestPayload())
+      body: JSON.stringify(requestPayload({ progressId: progress.id }))
     });
 
     const payload = await readJsonResponse(response);
     state.document = payload.document;
+    setRagDirty(true);
     renderDocument();
     setStatus("Szenarien generiert.");
   } catch (error) {
     setStatus(error.message);
   } finally {
+    progress.close();
     setBusy(false);
   }
 });
@@ -77,22 +131,25 @@ analyzeButton.addEventListener("click", async () => {
     return;
   }
 
+  const progress = openProgressStream();
   setBusy(true, "KI prüft Inhalte...");
 
   try {
     const response = await fetch("/api/analyze", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(requestPayload())
+      body: JSON.stringify(requestPayload({ progressId: progress.id }))
     });
 
     const payload = await readJsonResponse(response);
     state.document = payload.document;
+    setRagDirty(true);
     renderDocument();
     setStatus("KI-Prüfung abgeschlossen.");
   } catch (error) {
     setStatus(error.message);
   } finally {
+    progress.close();
     setBusy(false);
   }
 });
@@ -102,13 +159,14 @@ renderButton.addEventListener("click", async () => {
     return;
   }
 
+  const progress = openProgressStream();
   setBusy(true, "DOCX wird vorbereitet...");
 
   try {
     const response = await fetch("/api/render", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(requestPayload())
+      body: JSON.stringify(requestPayload({ progressId: progress.id }))
     });
 
     if (!response.ok) {
@@ -122,6 +180,7 @@ renderButton.addEventListener("click", async () => {
   } catch (error) {
     setStatus(error.message);
   } finally {
+    progress.close();
     setBusy(false);
   }
 });
@@ -142,8 +201,10 @@ async function uploadFile(file) {
 
     const payload = await readJsonResponse(response);
     state.document = payload.document;
+    setRagDirty(false);
     renderDocument();
     setStatus(`${payload.document.meta.anzahl_ls} Lernsituation(en) erkannt.`);
+    window.setTimeout(loadRagStatus, 1200);
   } catch (error) {
     state.document = null;
     renderDocument();
@@ -167,6 +228,7 @@ function renderDocument() {
   scenariosButton.disabled = !doc;
   analyzeButton.disabled = !doc;
   renderButton.disabled = !doc;
+  updateRagControls();
 
   metaFields.beruf.value = doc?.meta?.beruf || "";
   metaFields.fach.value = doc?.meta?.fach || "";
@@ -200,16 +262,26 @@ function renderSituationCard(situation, index) {
   idInput.addEventListener("input", () => {
     if (state.document?.lernsituationen?.[index]) {
       state.document.lernsituationen[index].id = idInput.value;
-      refreshJsonPreview();
+      setRagDirty(true);
+      scheduleJsonPreviewRefresh();
     }
   });
-  header.append(idInput, renderTags(situation.kompetenzen));
+  const rememberButton = document.createElement("button");
+  rememberButton.className = "button secondary compact";
+  rememberButton.type = "button";
+  rememberButton.textContent = "Als Beispiel merken";
+  rememberButton.addEventListener("click", () => {
+    markSituationAsExample(index, rememberButton);
+  });
+
+  header.append(idInput, renderTags(situation.kompetenzen), rememberButton);
 
   const details = document.createElement("dl");
   appendEditableDetail(details, "Einstieg", situation.einstieg, (value) => {
     if (state.document?.lernsituationen?.[index]) {
       state.document.lernsituationen[index].einstieg = value;
-      refreshJsonPreview();
+      setRagDirty(true);
+      scheduleJsonPreviewRefresh();
     }
   });
   appendEditableDetail(details, "Handlungsprodukt", situation.handlungsprodukt, (value) => {
@@ -218,7 +290,8 @@ function renderSituationCard(situation, index) {
   appendEditableDetail(details, "Kompetenzen", formatCompetenceLines(situation.kompetenzen), (value) => {
     if (state.document?.lernsituationen?.[index]) {
       state.document.lernsituationen[index].kompetenzen = parseCompetenceLines(value);
-      refreshJsonPreview();
+      setRagDirty(true);
+      scheduleJsonPreviewRefresh();
     }
   });
   appendEditableDetail(details, "Inhalte", situation.inhalte, (value) => {
@@ -277,21 +350,175 @@ function outputFileName() {
   return `${base.toLowerCase().replace(/[^a-z0-9_-]+/gi, "-")}.docx`;
 }
 
-function requestPayload() {
+function requestPayload(extra = {}) {
   return {
     document: state.document,
-    model: state.selectedModel || undefined
+    model: state.selectedModel || undefined,
+    ...extra
   };
+}
+
+async function markSituationAsExample(index, button) {
+  const situation = state.document?.lernsituationen?.[index];
+  if (!situation) return;
+
+  const previousLabel = button.textContent;
+  button.disabled = true;
+  button.textContent = "Merke...";
+  setStatus(`${situation.id} wird als Beispiel gespeichert...`);
+
+  try {
+    const response = await fetch("/api/rag/examples", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        document: state.document,
+        situation
+      })
+    });
+    const payload = await readJsonResponse(response);
+    renderRagStatus(payload.status);
+    button.textContent = "Gemerkte LS";
+    setStatus(`${situation.id} ist als Beispiel gespeichert.`);
+  } catch (error) {
+    button.textContent = previousLabel;
+    button.disabled = false;
+    setStatus(error.message);
+  }
+}
+
+async function loadRagStatus(options = {}) {
+  try {
+    const response = await fetch("/api/rag/status", { cache: "no-store" });
+    const payload = await readJsonResponse(response);
+    renderRagStatus(payload);
+    if (options.announce) {
+      setStatus(
+        state.document && state.ragDirty
+          ? "RAG-Status aktualisiert. Aenderungen am Dokument sind noch nicht uebernommen."
+          : "RAG-Status aktualisiert."
+      );
+    }
+  } catch (error) {
+    ragCount.textContent = "RAG nicht verfuegbar";
+    ragDetails.textContent = error.message;
+    ragRecent.textContent = "";
+    if (options.announce) {
+      setStatus(error.message);
+    }
+  }
+}
+
+function renderRagStatus(status = {}) {
+  const total = Number(status.total || 0);
+  const approved = Number(status.approved || 0);
+  const recent = Array.isArray(status.recent) ? status.recent : [];
+
+  ragCount.textContent = `${total} Beispiel${total === 1 ? "" : "e"}`;
+  ragDetails.textContent = `${approved} kuratiert`;
+  ragRecent.replaceChildren();
+
+  if (!recent.length) {
+    ragRecent.textContent = "Noch keine gespeicherten Beispiele.";
+    return;
+  }
+
+  const list = document.createElement("ul");
+  for (const item of recent.slice(0, 4)) {
+    const entry = document.createElement("li");
+    const label = [item.beruf, item.situation_id].filter(Boolean).join(" - ");
+    entry.textContent = `${item.approved ? "Gemerkte LS" : "Index"}: ${label || "Ohne Titel"}`;
+    list.append(entry);
+  }
+  ragRecent.append(list);
+}
+
+function openProgressStream() {
+  const id = createProgressId();
+  if (!("EventSource" in window)) {
+    return { id, close() {} };
+  }
+
+  const source = new EventSource(`/api/progress/${encodeURIComponent(id)}`);
+
+  source.addEventListener("progress", (event) => {
+    const payload = parseProgressPayload(event.data);
+    if (payload?.message) {
+      setStatus(formatProgressMessage(payload));
+    }
+    if (payload?.done) {
+      source.close();
+    }
+  });
+
+  source.addEventListener("error", () => {
+    source.close();
+  });
+
+  return {
+    id,
+    close() {
+      source.close();
+    }
+  };
+}
+
+function createProgressId() {
+  if (window.crypto?.randomUUID) {
+    return window.crypto.randomUUID();
+  }
+
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function parseProgressPayload(value) {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+function formatProgressMessage(payload) {
+  if (payload.current && payload.total) {
+    return `${payload.message} (${payload.current}/${payload.total})`;
+  }
+
+  return payload.message;
 }
 
 function updateSituationField(index, key, value) {
   if (state.document?.lernsituationen?.[index]) {
     state.document.lernsituationen[index][key] = value;
-    refreshJsonPreview();
+    setRagDirty(true);
+    scheduleJsonPreviewRefresh();
   }
 }
 
+function setRagDirty(isDirty) {
+  state.ragDirty = Boolean(isDirty);
+  updateRagControls();
+}
+
+function updateRagControls() {
+  const hasDocument = Boolean(state.document);
+  ragReindexButton.disabled = !hasDocument;
+  ragReindexButton.textContent = state.ragDirty
+    ? "Aenderungen in RAG uebernehmen"
+    : "Aktuelles Dokument indexieren";
+  ragReindexButton.title = state.ragDirty
+    ? "Die sichtbaren Dokumentaenderungen sind noch nicht im RAG gespeichert."
+    : "";
+}
+
+function scheduleJsonPreviewRefresh() {
+  window.clearTimeout(jsonPreviewTimer);
+  jsonPreviewTimer = window.setTimeout(refreshJsonPreview, 350);
+}
+
 function refreshJsonPreview() {
+  window.clearTimeout(jsonPreviewTimer);
+  jsonPreviewTimer = null;
   jsonPreview.textContent = state.document ? JSON.stringify(state.document, null, 2) : "{}";
 }
 
@@ -451,6 +678,9 @@ function setBusy(isBusy, message = "") {
   scenariosButton.disabled = isBusy || !state.document;
   analyzeButton.disabled = isBusy || !state.document;
   renderButton.disabled = isBusy || !state.document;
+  ragRefreshButton.disabled = isBusy;
+  ragReindexButton.disabled = isBusy || !state.document;
+  ragResetButton.disabled = isBusy;
 
   if (message) {
     setStatus(message);
@@ -522,4 +752,5 @@ function populateModelSelect(models, configuredModel) {
 }
 
 checkSystemStatus();
+loadRagStatus();
 renderDocument();

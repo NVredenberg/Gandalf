@@ -55,6 +55,7 @@ Standardwerte fuer dein Homelab:
 APP_PORT=3010
 OLLAMA_URL=http://host.docker.internal:11434/api/generate
 OLLAMA_MODEL=llama3.1:8b
+OLLAMA_EMBEDDING_MODEL=nomic-embed-text
 OLLAMA_NUM_CTX=16384
 OLLAMA_NUM_PREDICT=4096
 OLLAMA_TIMEOUT_MS=1800000
@@ -73,6 +74,7 @@ Auf dem KI-Rechner:
 
 ```bash
 ollama pull llama3.1:8b
+ollama pull nomic-embed-text
 curl http://localhost:11434/api/tags
 ```
 
@@ -159,6 +161,12 @@ Uploads bleiben fuer die Verarbeitung auf dem Host sichtbar:
 /data/docker/lernfeld-docx/data/uploads
 ```
 
+Der lokale RAG-Speicher liegt dauerhaft hier:
+
+```text
+/data/docker/lernfeld-docx/data/rag.db
+```
+
 ## Aktualisieren
 
 Neue Version kopieren, dann:
@@ -202,5 +210,6 @@ Modell fehlt:
 
 ```bash
 ollama pull llama3.1:8b
+ollama pull nomic-embed-text
 ollama list
 ```

@@ -65,6 +65,26 @@
           </div>
         </section>
 
+        <section class="rag-panel" aria-label="RAG-Speicher">
+          <div class="rag-summary">
+            <span>RAG-Speicher</span>
+            <strong id="ragCount">0 Beispiele</strong>
+            <small id="ragDetails">Noch nicht geladen</small>
+          </div>
+          <div id="ragRecent" class="rag-recent"></div>
+          <div class="rag-actions">
+            <button id="ragRefreshButton" class="button secondary" type="button">
+              Status aktualisieren
+            </button>
+            <button id="ragReindexButton" class="button secondary" type="button" disabled>
+              Aktuelles Dokument indexieren
+            </button>
+            <button id="ragResetButton" class="button danger" type="button">
+              RAG leeren
+            </button>
+          </div>
+        </section>
+
         <section class="content-grid">
           <div>
             <h2>Erkannte Lernsituationen</h2>

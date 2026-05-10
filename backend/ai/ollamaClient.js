@@ -3,22 +3,40 @@ import https from "node:https";
 
 const OLLAMA_URL = process.env.OLLAMA_URL || "http://localhost:11434/api/generate";
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL || "llama3.1:8b";
-const OLLAMA_TAGS_URL = buildTagsUrl(OLLAMA_URL);
+const OLLAMA_TAGS_URL = buildApiUrl(OLLAMA_URL, "/api/tags");
+const OLLAMA_EMBEDDINGS_URL = buildApiUrl(OLLAMA_URL, "/api/embeddings");
+const OLLAMA_EMBEDDING_MODEL = process.env.OLLAMA_EMBEDDING_MODEL || "nomic-embed-text";
 const OLLAMA_NUM_CTX = readPositiveInteger(process.env.OLLAMA_NUM_CTX, 16384);
 const OLLAMA_TIMEOUT_MS = readPositiveInteger(
   process.env.OLLAMA_TIMEOUT_MS,
   30 * 60 * 1000
 );
 const OLLAMA_NUM_PREDICT = readPositiveInteger(process.env.OLLAMA_NUM_PREDICT, 4096);
+const OLLAMA_RETRY_ATTEMPTS = readPositiveInteger(process.env.OLLAMA_RETRY_ATTEMPTS, 3);
+const OLLAMA_RETRY_BASE_DELAY_MS = readPositiveInteger(
+  process.env.OLLAMA_RETRY_BASE_DELAY_MS,
+  600
+);
+const TRANSIENT_NETWORK_CODES = new Set([
+  "ECONNRESET",
+  "ECONNREFUSED",
+  "EPIPE",
+  "ETIMEDOUT",
+  "ENOTFOUND",
+  "EAI_AGAIN"
+]);
 
 export function getOllamaConfig() {
   return {
     url: OLLAMA_URL,
     model: OLLAMA_MODEL,
+    embeddingModel: OLLAMA_EMBEDDING_MODEL,
+    embeddingsUrl: OLLAMA_EMBEDDINGS_URL,
     tagsUrl: OLLAMA_TAGS_URL,
     numCtx: OLLAMA_NUM_CTX,
     numPredict: OLLAMA_NUM_PREDICT,
-    timeoutMs: OLLAMA_TIMEOUT_MS
+    timeoutMs: OLLAMA_TIMEOUT_MS,
+    retryAttempts: OLLAMA_RETRY_ATTEMPTS
   };
 }
 
@@ -88,7 +106,7 @@ export async function generateWithOllama(prompt, settings = {}) {
 
   let response;
   try {
-    response = await requestJson(OLLAMA_URL, {
+    response = await requestJsonWithRetry(OLLAMA_URL, {
       method: "POST",
       body,
       timeoutMs: OLLAMA_TIMEOUT_MS
@@ -117,6 +135,64 @@ export async function generateWithOllama(prompt, settings = {}) {
   );
 
   return response.json.response || "";
+}
+
+export async function generateEmbedding(text, settings = {}) {
+  const model = settings.model || settings.embeddingModel || OLLAMA_EMBEDDING_MODEL;
+  const input = String(text || "").trim();
+  if (!input) return [];
+
+  let response;
+  try {
+    response = await requestJsonWithRetry(OLLAMA_EMBEDDINGS_URL, {
+      method: "POST",
+      body: {
+        model,
+        prompt: input
+      },
+      timeoutMs: settings.timeoutMs || OLLAMA_TIMEOUT_MS
+    });
+  } catch (error) {
+    if (error.name === "TimeoutError") {
+      throw new Error(buildOllamaTimeoutMessage());
+    }
+
+    throw new Error(buildOllamaConnectionMessage(error));
+  }
+
+  if (!isHttpOk(response.statusCode)) {
+    throw new Error(`Ollama-Embedding-Fehler ${response.statusCode}: ${response.bodyText}`);
+  }
+
+  const embedding = extractEmbedding(response.json);
+  if (!embedding.length) {
+    throw new Error(
+      `Ollama hat kein gueltiges Embedding zurueckgegeben: ${response.bodyText.slice(0, 500)}`
+    );
+  }
+
+  return embedding;
+}
+
+async function requestJsonWithRetry(url, options) {
+  for (let attempt = 1; attempt <= OLLAMA_RETRY_ATTEMPTS; attempt += 1) {
+    try {
+      return await requestJson(url, options);
+    } catch (error) {
+      if (!shouldRetryRequestError(error) || attempt >= OLLAMA_RETRY_ATTEMPTS) {
+        throw error;
+      }
+
+      const delay = OLLAMA_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1);
+      console.warn(
+        `[Ollama] Netzwerkfehler (${error.code || error.message}); ` +
+          `erneuter Versuch ${attempt + 1}/${OLLAMA_RETRY_ATTEMPTS} in ${delay}ms.`
+      );
+      await wait(delay);
+    }
+  }
+
+  throw new Error("Ollama-Anfrage konnte nicht ausgefuehrt werden.");
 }
 
 function requestJson(url, { method = "GET", body, timeoutMs }) {
@@ -221,16 +297,44 @@ function describeConnectionCause(error) {
   return [...new Set(details)].join(" - ");
 }
 
-function buildTagsUrl(generateUrl) {
+function shouldRetryRequestError(error) {
+  if (error.name === "TimeoutError") return false;
+  if (TRANSIENT_NETWORK_CODES.has(error.code)) return true;
+  if (TRANSIENT_NETWORK_CODES.has(error.cause?.code)) return true;
+
+  return /socket hang up|aborted|network/i.test(error.message || "");
+}
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function buildApiUrl(generateUrl, pathname) {
   try {
     const url = new URL(generateUrl);
-    url.pathname = "/api/tags";
+    url.pathname = pathname;
     url.search = "";
     url.hash = "";
     return url.toString();
   } catch {
-    return "http://localhost:11434/api/tags";
+    return `http://localhost:11434${pathname}`;
   }
+}
+
+function extractEmbedding(json) {
+  if (Array.isArray(json?.embedding)) {
+    return normalizeEmbedding(json.embedding);
+  }
+
+  if (Array.isArray(json?.embeddings?.[0])) {
+    return normalizeEmbedding(json.embeddings[0]);
+  }
+
+  return [];
+}
+
+function normalizeEmbedding(values) {
+  return values.map((value) => Number(value)).filter((value) => Number.isFinite(value));
 }
 
 function readPositiveInteger(value, fallback) {

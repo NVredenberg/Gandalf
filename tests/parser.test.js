@@ -1,10 +1,20 @@
 import assert from "node:assert/strict";
+import fs from "node:fs/promises";
+import path from "node:path";
 import test from "node:test";
 
+import { cleanUploadsDir } from "../backend/uploadCleanup.js";
+import { loadExampleContext, __exampleLoaderInternals } from "../backend/ai/exampleLoader.js";
+import {
+  buildSituationText,
+  cosineSimilarity,
+  createRagStore
+} from "../backend/ai/ragStore.js";
 import { parseTemplateTablesFromXml } from "../backend/parser/docxTableParser.js";
 import { parseMarkdownText } from "../backend/parser/markdownParser.js";
 import { extractTagsFromText, normalizeAiDocument, TAG_COLORS } from "../backend/parser/schema.js";
 import { structure } from "../backend/renderer/structure.js";
+import { fallbackKiMapping, splitMethodSections } from "../backend/renderer/rendererHeuristics.js";
 import { __contentOptimizerInternals } from "../backend/ai/contentOptimizer.js";
 
 test("Markdown wird in das verbindliche JSON normalisiert", () => {
@@ -277,4 +287,176 @@ Hier ist das Ergebnis:
 `);
 
   assert.equal(parsed.scenarios[0].id, "LS 5.1");
+});
+
+test("Scenario-Qualitaetspruefung erkennt fehlende Anker und Arbeitsauftrag", () => {
+  const issues = __contentOptimizerInternals.scenarioQualityIssues(
+    {
+      lernsituationen: [
+        {
+          id: "LS 5.1",
+          handlungsprodukt: "Beschwerdeantwort",
+          kompetenzen: [{ text: "Kundenanliegen analysieren und bewerten" }],
+          inhalte: "Reklamation, Gewaehrleistung, Fristen",
+          methoden: "",
+          einstieg: ""
+        }
+      ]
+    },
+    [{ id: "LS 5.1", einstieg: "Ein Kunde ruft im Betrieb an." }]
+  );
+
+  assert.ok(issues.some((issue) => issue.includes("zu kurz")));
+  assert.ok(issues.some((issue) => issue.includes("kein klarer Arbeitsauftrag")));
+  assert.ok(issues.some((issue) => issue.includes("Inhaltsanker fehlt")));
+  assert.ok(issues.some((issue) => issue.includes("Kompetenz-Taetigkeit fehlt")));
+});
+
+test("Renderer trennt Methoden, Materialien und organisatorische Hinweise", () => {
+  const sections = splitMethodSections(`
+Partnerarbeit
+Unterrichtsmaterialien / Fundstelle: Arbeitsblatt A1
+Online-Quelle
+Organisatorische Hinweise: PC-Raum buchen
+Gruppen vorher einteilen
+`);
+
+  assert.equal(sections.methoden, "Partnerarbeit");
+  assert.equal(sections.materialien, "Arbeitsblatt A1\nOnline-Quelle");
+  assert.equal(sections.organisation, "PC-Raum buchen\nGruppen vorher einteilen");
+});
+
+test("Renderer-Fallback fuer KI-Zuordnung erkennt KI-Anwendung und Recht", () => {
+  const mapping = fallbackKiMapping({
+    id: "LS 5.1",
+    einstieg: "Die Lernenden pruefen ChatGPT-Antworten zu Kundendaten.",
+    handlungsprodukt: "Datenschutzbewertung",
+    kompetenzen: [{ text: "KI-Werkzeuge nutzen und Ergebnisse bewerten" }],
+    inhalte: "Datenschutz, Quellenkritik",
+    methoden: ""
+  });
+
+  assert.equal(mapping.anwendung, true);
+  assert.equal(mapping.gesellschaftRecht, true);
+  assert.match(mapping.summary, /Lernenden/);
+});
+
+test("Upload-Cleanup loescht nur ungeschuetzte Upload-Dateien", async () => {
+  const uploadDir = path.join(process.cwd(), "data", `uploads-cleanup-test-${Date.now()}`);
+
+  await fs.mkdir(uploadDir, { recursive: true });
+  try {
+    await Promise.all([
+      fs.writeFile(path.join(uploadDir, ".gitkeep"), "", "utf8"),
+      fs.writeFile(path.join(uploadDir, "frontend-preview.err.log"), "err", "utf8"),
+      fs.writeFile(path.join(uploadDir, "frontend-preview.out.log"), "out", "utf8"),
+      fs.writeFile(path.join(uploadDir, "upload.docx"), "docx", "utf8"),
+      fs.writeFile(path.join(uploadDir, "parsed.json"), "{}", "utf8")
+    ]);
+
+    const result = await cleanUploadsDir(uploadDir);
+    const entries = (await fs.readdir(uploadDir)).sort();
+
+    assert.deepEqual(entries, [
+      ".gitkeep",
+      "frontend-preview.err.log",
+      "frontend-preview.out.log"
+    ]);
+    assert.deepEqual(result.deleted.sort(), ["parsed.json", "upload.docx"]);
+  } finally {
+    await fs.rm(uploadDir, { recursive: true, force: true });
+  }
+});
+
+test("Beispiel-Loader findet beruflich passende Markdown-Beispiele", async () => {
+  const context = await loadExampleContext({
+    meta: { beruf: "Kaufmann/Kauffrau fuer Bueromanagement" },
+    lernsituationen: []
+  });
+
+  assert.match(context, /Orientierungsbeispiele/);
+  assert.match(context, /Kundenauftraege bearbeiten/);
+  assert.match(context, /Bueromanagement/);
+});
+
+test("Beispiel-Loader normalisiert Berufsbezeichnungen fuer Pfad-Matching", () => {
+  assert.equal(
+    __exampleLoaderInternals.slugify("Kaufmann/Kauffrau fuer Bueromanagement"),
+    "kaufmann-kauffrau-fuer-bueromanagement"
+  );
+});
+
+test("RAG-Store speichert und findet aehnliche Lernsituationen", async () => {
+  const dbPath = path.join(process.cwd(), "data", `rag-test-${Date.now()}.db`);
+  const store = createRagStore({ dbPath });
+
+  try {
+    await store.indexSituation(
+      {
+        id: "LS 5.1",
+        einstieg: "Eine Kundin fragt ein Angebot an.",
+        handlungsprodukt: "Angebotsvergleich",
+        kompetenzen: [{ text: "Kundenanfragen auswerten" }],
+        inhalte: "Anfrage, Angebot, Lieferbedingungen",
+        methoden: "Partnerarbeit"
+      },
+      {
+        meta: { beruf: "Kaufmann/Kauffrau fuer Bueromanagement" },
+        embedding: [1, 0, 0],
+        approved: true
+      }
+    );
+
+    await store.indexSituation(
+      {
+        id: "LS 9.1",
+        einstieg: "Ein Netzwerk wird geplant.",
+        handlungsprodukt: "Netzwerkplan",
+        kompetenzen: [{ text: "Netzwerke modellieren" }],
+        inhalte: "Subnetting, Router",
+        methoden: "Gruppenarbeit"
+      },
+      {
+        meta: { beruf: "Fachinformatiker/in" },
+        embedding: [0, 1, 0]
+      }
+    );
+
+    const matches = await store.retrieveSimilar([0.9, 0.1, 0], 1, {
+      beruf: "Kaufmann/Kauffrau fuer Bueromanagement"
+    });
+
+    assert.equal(matches.length, 1);
+    assert.equal(matches[0].situation_id, "LS 5.1");
+    assert.equal(matches[0].approved, 1);
+    assert.equal(matches[0].situation.handlungsprodukt, "Angebotsvergleich");
+
+    const status = await store.getStatus();
+    assert.equal(status.total, 2);
+    assert.equal(status.approved, 1);
+    assert.equal(status.recent.length, 2);
+
+    const reset = await store.reset();
+    assert.equal(reset.deleted, 2);
+    assert.equal((await store.getStatus()).total, 0);
+  } finally {
+    store.close();
+    await fs.rm(dbPath, { force: true });
+  }
+});
+
+test("RAG-Hilfsfunktionen berechnen Situationstext und Kosinus-Aehnlichkeit", () => {
+  const text = buildSituationText(
+    {
+      id: "LS 1",
+      handlungsprodukt: "Produkt",
+      kompetenzen: [{ text: "Kompetenz" }],
+      inhalte: "Inhalt"
+    },
+    { beruf: "Beruf", fach: "Fach", lernfeld: "LF 1" }
+  );
+
+  assert.match(text, /Beruf: Beruf/);
+  assert.equal(cosineSimilarity([1, 0], [1, 0]), 1);
+  assert.equal(cosineSimilarity([1, 0], [0, 1]), 0);
 });

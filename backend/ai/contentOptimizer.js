@@ -1,4 +1,6 @@
 import { generateWithOllama } from "./ollamaClient.js";
+import { loadExampleContext } from "./exampleLoader.js";
+import { loadRagExampleContext } from "./ragStore.js";
 import { normalizeAiDocument, normalizeLearningDocument } from "../parser/schema.js";
 
 const CONTENT_SYSTEM_PROMPT =
@@ -12,7 +14,9 @@ const STORY_SYSTEM_PROMPT =
 
 export async function optimizeLearningDocument(input, settings = {}) {
   const document = normalizeLearningDocument(input);
+  reportProgress(settings, "Inhalte werden fachlich geprueft.");
   const optimized = await runContentOptimizationSafely(document, settings);
+  reportProgress(settings, "Einstiegsszenarien werden harmonisiert.");
   const harmonized = await runScenarioHarmonization(optimized, settings);
 
   debugScenarioChanges(document, optimized, harmonized);
@@ -26,6 +30,7 @@ export async function optimizeLearningDocument(input, settings = {}) {
 
 export async function generateKiMappingsForTable(lernsituationen, settings = {}) {
   if (!lernsituationen?.length) return {};
+  reportProgress(settings, "KI-Zuordnung wird generiert.");
 
   const input = lernsituationen.map((ls) => ({
     id: ls.id,
@@ -135,15 +140,29 @@ async function runContentOptimization(document, settings = {}) {
 export async function runScenarioHarmonization(document, settings = {}) {
   if (document.lernsituationen.length === 0) return document;
 
-  const storyContext = await generateStoryContext(document, settings);
+  reportProgress(settings, "Story-Kontext wird generiert.");
+  const [storyContext, staticExampleContext, ragExampleContext] = await Promise.all([
+    generateStoryContext(document, settings),
+    loadExampleContext(document),
+    loadRagExampleContext(document, settings)
+  ]);
+  const exampleContext = combineExampleContexts(staticExampleContext, ragExampleContext);
   debugStoryContext(storyContext);
 
-  if (scenarioMode(settings) === "individual") {
-    return generateScenariosIndividually(document, storyContext, settings);
+  if (staticExampleContext || ragExampleContext) {
+    reportProgress(settings, "Passende Beispiele wurden geladen.", {
+      staticExamples: Boolean(staticExampleContext),
+      ragExamples: Boolean(ragExampleContext)
+    });
   }
 
+  if (scenarioMode(settings) === "individual") {
+    return generateScenariosIndividually(document, storyContext, exampleContext, settings);
+  }
+
+  reportProgress(settings, "Szenarien werden generiert.");
   const responseText = await generateWithOllama(
-    buildScenarioPrompt(document, storyContext),
+    buildScenarioPrompt(document, storyContext, exampleContext),
     {
       format: "json",
       model: settings.model,
@@ -155,10 +174,17 @@ export async function runScenarioHarmonization(document, settings = {}) {
     }
   );
 
+  reportProgress(settings, "Szenarien werden geprueft.");
   let parsed = parseScenarioResponse(responseText, document.lernsituationen.length);
   if (!parsed) return document;
 
-  parsed = await repairScenarioSetIfNeeded(document, storyContext, parsed, settings);
+  parsed = await repairScenarioSetIfNeeded(
+    document,
+    storyContext,
+    exampleContext,
+    parsed,
+    settings
+  );
 
   const byId = new Map(
     parsed
@@ -169,6 +195,10 @@ export async function runScenarioHarmonization(document, settings = {}) {
   const lernsituationen = document.lernsituationen.map((ls, index) => {
     const incoming = byId.get(normalizeId(ls.id)) || parsed[index];
     const newEinstieg = cleanScenarioText(incoming?.einstieg);
+    reportProgress(settings, `${ls.id} verarbeitet.`, {
+      current: index + 1,
+      total: document.lernsituationen.length
+    });
     return newEinstieg ? { ...ls, einstieg: newEinstieg } : ls;
   });
 
@@ -194,16 +224,27 @@ async function generateStoryContext(document, settings = {}) {
   }
 }
 
-async function generateScenariosIndividually(document, context, settings = {}) {
+async function generateScenariosIndividually(document, context, exampleContext, settings = {}) {
   const lernsituationen = [];
   let previousOutcome = "";
 
   for (const [index, situation] of document.lernsituationen.entries()) {
     let nextSituation = situation;
+    reportProgress(settings, `${situation.id} wird generiert.`, {
+      current: index + 1,
+      total: document.lernsituationen.length
+    });
 
     try {
       const responseText = await generateWithOllama(
-        buildSingleScenarioPrompt(document, context, situation, index, previousOutcome),
+        buildSingleScenarioPrompt(
+          document,
+          context,
+          exampleContext,
+          situation,
+          index,
+          previousOutcome
+        ),
         {
           format: "json",
           model: settings.model,
@@ -224,12 +265,23 @@ async function generateScenariosIndividually(document, context, settings = {}) {
 
     lernsituationen.push(nextSituation);
     previousOutcome = summarizeScenarioOutcome(nextSituation);
+    reportProgress(settings, `${situation.id} verarbeitet.`, {
+      current: index + 1,
+      total: document.lernsituationen.length
+    });
   }
 
   return { ...document, lernsituationen };
 }
 
-function buildSingleScenarioPrompt(document, context, situation, index, previousOutcome) {
+function buildSingleScenarioPrompt(
+  document,
+  context,
+  exampleContext,
+  situation,
+  index,
+  previousOutcome
+) {
   const anchor = compactScenarioAnchor(situation);
 
   return `Schreibe genau eine didaktische Handlungssituation.
@@ -246,6 +298,7 @@ Lernsituation:
 - Produkt: ${anchor.handlungsprodukt}
 - Taetigkeit: ${anchor.kompetenz}
 - Inhalte: ${anchor.inhalte}
+${examplePromptBlock(exampleContext)}
 
 Regeln:
 - 6 - 8 Saetze, 250 -350 Woerter, Gegenwartsform.
@@ -336,7 +389,7 @@ Antworte NUR mit JSON:
 }`;
 }
 
-function buildScenarioPrompt(document, context) {
+function buildScenarioPrompt(document, context, exampleContext = "") {
   const situationList = document.lernsituationen
     .map((ls, index) => {
       const anchor = compactScenarioAnchor(ls);
@@ -361,6 +414,7 @@ Kontext ist FEST und darf nicht ausgetauscht werden:
 Beruf: ${document.meta.beruf || "-"}
 Fach: ${document.meta.fach || "-"}
 Lernfeld: ${document.meta.lernfeld || "-"}
+${examplePromptBlock(exampleContext)}
 
 Regeln:
 1. Schreibe pro LS 5-6 vollstaendige Saetze in der Gegenwartsform.
@@ -454,15 +508,22 @@ function toCategoryBoolean(value) {
   return false;
 }
 
-async function repairScenarioSetIfNeeded(document, context, scenarios, settings = {}) {
+async function repairScenarioSetIfNeeded(
+  document,
+  context,
+  exampleContext,
+  scenarios,
+  settings = {}
+) {
   const issues = scenarioQualityIssues(document, scenarios);
   if (!issues.length) return scenarios;
 
   console.warn(`[ScenarioQuality] Reparatur fuer ${issues.length} Szenario(s): ${issues.join("; ")}`);
+  reportProgress(settings, "Szenarien werden nachgeschaerft.");
 
   try {
     const responseText = await generateWithOllama(
-      buildScenarioRepairPrompt(document, context, scenarios, issues),
+      buildScenarioRepairPrompt(document, context, exampleContext, scenarios, issues),
       {
         format: "json",
         model: settings.model,
@@ -482,7 +543,7 @@ async function repairScenarioSetIfNeeded(document, context, scenarios, settings 
   }
 }
 
-function buildScenarioRepairPrompt(document, context, scenarios, issues) {
+function buildScenarioRepairPrompt(document, context, exampleContext, scenarios, issues) {
   const anchors = document.lernsituationen
     .map((ls, index) => {
       const anchor = compactScenarioAnchor(ls);
@@ -502,6 +563,7 @@ Kontext:
 - Hauptperson: ${context.hauptperson} (${context.rolle})
 - Adressat/Kunde: ${context.kundeOderAdressat}
 - Leitauftrag: ${context.leitauftrag}
+${examplePromptBlock(exampleContext)}
 
 Festgestellte Maengel:
 ${issues.map((issue) => `- ${issue}`).join("\n")}
@@ -523,6 +585,15 @@ Antworte NUR mit JSON:
     {"id": "LS X.X", "einstieg": "ueberarbeiteter Einstieg..."}
   ]
 }`;
+}
+
+function examplePromptBlock(exampleContext = "") {
+  const text = String(exampleContext || "").trim();
+  return text ? `\n\n${text}\n` : "";
+}
+
+function combineExampleContexts(...contexts) {
+  return contexts.map((context) => String(context || "").trim()).filter(Boolean).join("\n\n");
 }
 
 function scenarioQualityIssues(document, scenarios) {
@@ -882,6 +953,16 @@ function debugStoryContext(context) {
   console.log(JSON.stringify(context, null, 2));
 }
 
+function reportProgress(settings = {}, message, data = {}) {
+  if (typeof settings.onProgress !== "function") return;
+
+  try {
+    settings.onProgress(message, data);
+  } catch (error) {
+    console.warn("[Progress] Fortschritt konnte nicht gesendet werden:", error.message);
+  }
+}
+
 function debugScenarioChanges(original, optimized, harmonized) {
   if (process.env.AI_DEBUG !== "1") return;
 
@@ -900,5 +981,6 @@ function debugScenarioChanges(original, optimized, harmonized) {
 export const __contentOptimizerInternals = Object.freeze({
   parseJsonArray,
   parseJsonResponse,
-  repairJsonString
+  repairJsonString,
+  scenarioQualityIssues
 });
