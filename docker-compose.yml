@@ -17,7 +17,7 @@ services:
       AI_TIMEOUT_MS: "${AI_TIMEOUT_MS:-2700000}"
       SCENARIO_MODE: "${SCENARIO_MODE:-batch}"
       AI_DEBUG: "${AI_DEBUG:-0}"
-      SEARXNG_URL: "${SEARXNG_URL:-http://searxng:8080}"
+      SEARXNG_URL: "${SEARXNG_URL:-http://host.docker.internal:8080}"
     volumes:
       - ./data:/app/data
     extra_hosts:
@@ -28,13 +28,4 @@ services:
       timeout: 10s
       retries: 3
       start_period: 20s
-    restart: unless-stopped
-
-  searxng:
-    image: searxng/searxng:latest
-    container_name: searxng
-    volumes:
-      - ./data/searxng:/etc/searxng:rw
-    expose:
-      - "8080"
     restart: unless-stopped

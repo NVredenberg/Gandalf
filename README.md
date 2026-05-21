@@ -38,7 +38,7 @@ http://localhost:3010
 
 Die generierten DOCX-Dateien werden nicht im Container gespeichert. Der Browser oeffnet einen Speichern-unter-Dialog oder nutzt den normalen Download-Ordner.
 
-SearXNG wird durch `docker-compose.yml` mitgestartet. Die minimale Konfiguration liegt in `data/searxng/settings.yml`; den `secret_key` kannst du fuer den produktiven Homelab-Betrieb austauschen.
+SearXNG wird nicht von dieser Compose-Datei gestartet. Die App nutzt einen bereits vorhandenen SearXNG-Dienst ueber `SEARXNG_URL`, standardmaessig `http://host.docker.internal:8080`. Wenn dein bestehender SearXNG auf einem anderen Host oder Port laeuft, passe `SEARXNG_URL` in `.env` an.
 
 ## Funktionen
 
