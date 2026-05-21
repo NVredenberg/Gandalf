@@ -220,7 +220,19 @@ function summarizeParsedDocument(parsed) {
   return {
     pages: Number(parsed?.pages || 0),
     chars: text.length,
+    ocr: summarizeOcr(parsed?.ocr),
     textPreview: compactText(text, 420)
+  };
+}
+
+function summarizeOcr(ocr) {
+  if (!ocr) return null;
+  return {
+    attempted: Boolean(ocr.attempted),
+    used: Boolean(ocr.used),
+    source: cleanShort(ocr.source || "", 40),
+    pages: Number(ocr.pages || 0),
+    chars: Number(ocr.chars || 0)
   };
 }
 

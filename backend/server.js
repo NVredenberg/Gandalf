@@ -65,6 +65,11 @@ const MAX_LERNSITUATIONEN = readPositiveInteger(process.env.MAX_LERNSITUATIONEN,
 const UPLOAD_MAX_MB = readPositiveInteger(process.env.UPLOAD_MAX_MB, 100);
 const UPLOAD_MAX_BYTES = UPLOAD_MAX_MB * 1024 * 1024;
 const PDF_MIN_TEXT_CHARS = readPositiveInteger(process.env.PDF_MIN_TEXT_CHARS, 200);
+const PDF_OCR_ENABLED = readBoolean(process.env.PDF_OCR_ENABLED, true);
+const PDF_OCR_LANG = String(process.env.PDF_OCR_LANG || "deu+eng").trim() || "deu+eng";
+const PDF_OCR_MAX_PAGES = readPositiveInteger(process.env.PDF_OCR_MAX_PAGES, 60);
+const PDF_OCR_DPI = readPositiveInteger(process.env.PDF_OCR_DPI, 180);
+const PDF_OCR_TIMEOUT_MS = readPositiveInteger(process.env.PDF_OCR_TIMEOUT_MS, 120000);
 
 // Lange KI-Routen duerfen mehrere Ollama-Aufrufe hintereinander ausfuehren.
 // Standard: 45 Minuten, konfigurierbar per AI_TIMEOUT_MS.
@@ -255,10 +260,9 @@ app.post(
         return;
       }
 
-      const [rahmenlehrplan, pruefungskatalog] = await Promise.all([
-        parsePdfFile(planFile.path),
-        parsePdfFile(catalogFile.path)
-      ]);
+      const pdfOptions = pdfParseOptions();
+      const rahmenlehrplan = await parsePdfFile(planFile.path, pdfOptions);
+      const pruefungskatalog = await parsePdfFile(catalogFile.path, pdfOptions);
       validateParsedPdfText(rahmenlehrplan, "Rahmenlehrplan");
       validateParsedPdfText(pruefungskatalog, "Pruefungskatalog");
 
@@ -357,12 +361,13 @@ app.post("/api/gandalf/upload-plan/:sessionId", upload.single("file"), async (re
       return;
     }
 
-    const parsed = await parsePdfFile(req.file.path);
+    const parsed = await parsePdfFile(req.file.path, pdfParseOptions());
     validateParsedPdfText(parsed, "Rahmenlehrplan");
     updateSession(session.id, { plan: parsed.text, planSource: req.file.originalname });
     res.json({
       pages: parsed.pages,
       chars: parsed.text.length,
+      ocr: parsed.ocr || null,
       kurzinfo: textPreview(parsed.text)
     });
   } catch (error) {
@@ -689,6 +694,11 @@ function readPositiveInteger(value, fallback) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+function readBoolean(value, fallback = false) {
+  if (value === undefined || value === null || value === "") return fallback;
+  return /^(1|true|yes|on|auto)$/i.test(String(value).trim());
+}
+
 function selectedModel(req) {
   const model = String(req.body?.model || "").trim();
   return model.length ? model : undefined;
@@ -715,11 +725,40 @@ function validateParsedPdfText(parsed, label) {
   const chars = String(parsed?.text || "").replace(/\s+/g, "").length;
   if (chars >= PDF_MIN_TEXT_CHARS) return;
 
+  const ocrHint = buildOcrHint(parsed);
   throw new Error(
     `${label} wurde als PDF gelesen, enthaelt aber nur ${chars} auslesbare Zeichen. ` +
-      "Bitte ein textbasiertes PDF verwenden oder die Datei mit OCR neu erzeugen. " +
-      "Stark komprimierte Bild-PDFs koennen ohne OCR nicht analysiert werden."
+      ocrHint
   );
+}
+
+function buildOcrHint(parsed) {
+  if (!PDF_OCR_ENABLED) {
+    return "OCR ist deaktiviert. Aktiviere PDF_OCR_ENABLED=1 oder verwende ein textbasiertes PDF.";
+  }
+
+  if (parsed?.ocr?.attempted && parsed.ocr.error) {
+    return `OCR wurde versucht, ist aber fehlgeschlagen: ${parsed.ocr.error}`;
+  }
+
+  if (parsed?.ocr?.attempted) {
+    return "OCR wurde versucht, hat aber nicht genug Text erkannt. Bitte eine besser lesbare PDF-Datei verwenden.";
+  }
+
+  return "Bitte ein textbasiertes PDF verwenden oder OCR aktivieren.";
+}
+
+function pdfParseOptions() {
+  return {
+    ocr: {
+      enabled: PDF_OCR_ENABLED,
+      minTextChars: PDF_MIN_TEXT_CHARS,
+      lang: PDF_OCR_LANG,
+      maxPages: PDF_OCR_MAX_PAGES,
+      dpi: PDF_OCR_DPI,
+      timeoutMs: PDF_OCR_TIMEOUT_MS
+    }
+  };
 }
 
 function indexUploadedDocument(document) {

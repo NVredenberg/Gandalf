@@ -20,6 +20,11 @@ services:
       SEARXNG_URL: "${SEARXNG_URL:-http://host.docker.internal:8080}"
       UPLOAD_MAX_MB: "${UPLOAD_MAX_MB:-100}"
       PDF_MIN_TEXT_CHARS: "${PDF_MIN_TEXT_CHARS:-200}"
+      PDF_OCR_ENABLED: "${PDF_OCR_ENABLED:-1}"
+      PDF_OCR_LANG: "${PDF_OCR_LANG:-deu+eng}"
+      PDF_OCR_MAX_PAGES: "${PDF_OCR_MAX_PAGES:-60}"
+      PDF_OCR_DPI: "${PDF_OCR_DPI:-180}"
+      PDF_OCR_TIMEOUT_MS: "${PDF_OCR_TIMEOUT_MS:-120000}"
     volumes:
       - ./data:/app/data
     extra_hosts:

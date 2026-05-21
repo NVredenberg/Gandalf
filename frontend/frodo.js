@@ -150,14 +150,24 @@ function renderFrodoUploadSummary(payload) {
   frodoUploadSummary.replaceChildren(
     infoItem(
       "Rahmenlehrplan",
-      `${docs.rahmenlehrplan?.pages || 0} Seiten, ${docs.rahmenlehrplan?.chars || 0} Zeichen`
+      formatPdfSummary(docs.rahmenlehrplan)
     ),
     infoItem(
       "Prüfungskatalog",
-      `${docs.pruefungskatalog?.pages || 0} Seiten, ${docs.pruefungskatalog?.chars || 0} Zeichen`
+      formatPdfSummary(docs.pruefungskatalog)
     ),
     infoItem("Erkannte Themen", topics.length ? topics.slice(0, 8).join("; ") : "Keine Überschriften erkannt")
   );
+}
+
+function formatPdfSummary(doc = {}) {
+  const parts = [`${doc.pages || 0} Seiten`, `${doc.chars || 0} Zeichen`];
+  if (doc.ocr?.used) {
+    parts.push(`OCR: ${doc.ocr.pages || 0} Seiten`);
+  } else if (doc.ocr?.source === "pdftotext") {
+    parts.push("PDF-Textfallback");
+  }
+  return parts.join(", ");
 }
 
 function renderFrodoAnalysis(analysis) {

@@ -117,7 +117,7 @@ async function uploadGandalfPlan() {
     const payload = await readJsonResponse(response);
     gandalfState.planReady = true;
     gandalfPlanNext.disabled = false;
-    renderPlanSummary(`${payload.pages || 0} Seiten, ${payload.chars || 0} Zeichen. ${payload.kurzinfo || ""}`);
+    renderPlanSummary(`${formatPdfSummary(payload)}. ${payload.kurzinfo || ""}`);
     setGandalfStatus("Plan übernommen.");
   } catch (error) {
     setGandalfStatus(error.message);
@@ -402,6 +402,16 @@ function renderGandalfSearchResults(results) {
 
 function renderPlanSummary(value) {
   gandalfPlanSummary.replaceChildren(infoItem("Plan", value));
+}
+
+function formatPdfSummary(payload = {}) {
+  const parts = [`${payload.pages || 0} Seiten`, `${payload.chars || 0} Zeichen`];
+  if (payload.ocr?.used) {
+    parts.push(`OCR: ${payload.ocr.pages || 0} Seiten`);
+  } else if (payload.ocr?.source === "pdftotext") {
+    parts.push("PDF-Textfallback");
+  }
+  return parts.join(", ");
 }
 
 function infoItem(label, value) {

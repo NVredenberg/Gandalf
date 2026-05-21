@@ -62,11 +62,20 @@ OLLAMA_TIMEOUT_MS=1800000
 AI_TIMEOUT_MS=2700000
 SCENARIO_MODE=batch
 AI_DEBUG=0
+UPLOAD_MAX_MB=100
+PDF_MIN_TEXT_CHARS=200
+PDF_OCR_ENABLED=1
+PDF_OCR_LANG=deu+eng
+PDF_OCR_MAX_PAGES=60
+PDF_OCR_DPI=180
+PDF_OCR_TIMEOUT_MS=120000
 ```
 
 `llama3.1:8b` ist der stabile Standard fuer komplexere Dokumentaufgaben auf dem ThinkCentre. `llama3.2:3b` ist schneller, aber bei langen didaktischen Texten schwaecher.
 
 Fuer maximale Szenarioqualitaet kannst du optional `SCENARIO_MODE=individual` setzen. Dann wird jede Lernsituation einzeln generiert; das dauert laenger, liefert aber oft ausfuehrlichere und passgenauere Einstiegssituationen.
+
+OCR ist fuer Frodo/Gandalf automatisch aktiv, wenn eine PDF keine brauchbare Textschicht enthaelt. Bei sehr langen gescannten Dokumenten kannst du `PDF_OCR_MAX_PAGES` erhoehen; das verlaengert den Upload-Schritt deutlich.
 
 ## Ollama auf dem Host vorbereiten
 

@@ -42,7 +42,7 @@ SearXNG wird nicht von dieser Compose-Datei gestartet. Die App nutzt einen berei
 
 Groessere PDFs fuer Frodo oder Gandalf werden ueber `UPLOAD_MAX_MB` begrenzt. Standard sind `100` MB. Wenn ein Rahmenlehrplan oder Pruefungskatalog groesser ist, kann der Wert in `.env` erhoeht werden.
 
-Frodo und Gandalf brauchen textbasierte PDFs. Wenn eine verkleinerte Datei nur noch aus gescannten Bildern besteht oder die Textschicht verloren hat, meldet die App das direkt nach dem Upload. Die Mindestmenge an auslesbarem Text kann bei Bedarf ueber `PDF_MIN_TEXT_CHARS` angepasst werden; Standard sind `200` Zeichen.
+Frodo und Gandalf lesen zuerst die normale PDF-Textschicht. Wenn eine verkleinerte Datei nur noch aus gescannten Bildern besteht oder die Textschicht verloren hat, startet automatisch OCR. OCR ist ueber `PDF_OCR_ENABLED=1` aktiv, nutzt standardmaessig `PDF_OCR_LANG=deu+eng`, verarbeitet maximal `PDF_OCR_MAX_PAGES=60` Seiten und kann bei Bedarf ueber `PDF_OCR_DPI` sowie `PDF_OCR_TIMEOUT_MS` angepasst werden. Die Mindestmenge an auslesbarem Text kann ueber `PDF_MIN_TEXT_CHARS` angepasst werden; Standard sind `200` Zeichen.
 
 ## Funktionen
 

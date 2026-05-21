@@ -5,6 +5,12 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
 
+RUN apk add --no-cache \
+    poppler-utils \
+    tesseract-ocr \
+    tesseract-ocr-data-deu \
+    tesseract-ocr-data-eng
+
 COPY package*.json ./
 RUN npm install --omit=dev
 
