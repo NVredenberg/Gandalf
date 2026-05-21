@@ -1,0 +1,27 @@
+[
+  {
+    "slot": 1,
+    "label": "Bildungsplaene NRW",
+    "file": "01_bildungsplaene.pdf"
+  },
+  {
+    "slot": 2,
+    "label": "DQR-Niveaus",
+    "file": "02_dqr-niveaus.pdf"
+  },
+  {
+    "slot": 3,
+    "label": "Digitale Schluesselkompetenzen",
+    "file": "03_digitale-schluesselkompetenzen.pdf"
+  },
+  {
+    "slot": 4,
+    "label": "KI-Zertifikat-Anforderungen",
+    "file": "04_ki-zertifikat-anforderungen.pdf"
+  },
+  {
+    "slot": 5,
+    "label": "Lern- und Arbeitstechniken",
+    "file": "05_lern-und-arbeitstechniken.pdf"
+  }
+]

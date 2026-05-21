@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Admin - Gandalf</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="workspace admin-shell">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Admin</p>
+            <h1>Gandalf Hintergrunddokumente</h1>
+          </div>
+          <div class="actions">
+            <a class="button secondary" href="/assistants.html#gandalf">Gandalf</a>
+            <a class="button secondary" href="/index.html">DOCX-Generator</a>
+          </div>
+        </header>
+
+        <section class="wizard-status">
+          <strong>Status</strong>
+          <span id="adminStatus">Bereit</span>
+        </section>
+
+        <section class="admin-panel">
+          <header>
+            <h2>Dokument-Slots</h2>
+            <button id="adminRefreshButton" class="button secondary" type="button">
+              Aktualisieren
+            </button>
+          </header>
+          <div id="adminDocsList" class="admin-doc-list"></div>
+        </section>
+
+        <section class="admin-panel">
+          <header>
+            <h2>Web-Suche</h2>
+            <button id="searchStatusButton" class="button secondary" type="button">
+              Testsuche durchführen
+            </button>
+          </header>
+          <div id="searchStatus" class="result-list"></div>
+        </section>
+      </section>
+    </main>
+
+    <script type="module" src="/admin.js"></script>
+  </body>
+</html>

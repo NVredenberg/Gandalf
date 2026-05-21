@@ -5,6 +5,7 @@ import test from "node:test";
 
 import { cleanUploadsDir } from "../backend/uploadCleanup.js";
 import { loadExampleContext, __exampleLoaderInternals } from "../backend/ai/exampleLoader.js";
+import { mapGandalfToLearningSituation } from "../backend/ai/gandalfMapping.js";
 import {
   buildSituationText,
   cosineSimilarity,
@@ -12,7 +13,12 @@ import {
 } from "../backend/ai/ragStore.js";
 import { parseTemplateTablesFromXml } from "../backend/parser/docxTableParser.js";
 import { parseMarkdownText } from "../backend/parser/markdownParser.js";
-import { extractTagsFromText, normalizeAiDocument, TAG_COLORS } from "../backend/parser/schema.js";
+import {
+  extractTagsFromText,
+  normalizeAiDocument,
+  normalizeLearningDocument,
+  TAG_COLORS
+} from "../backend/parser/schema.js";
 import { structure } from "../backend/renderer/structure.js";
 import { fallbackKiMapping, splitMethodSections } from "../backend/renderer/rendererHeuristics.js";
 import { __contentOptimizerInternals } from "../backend/ai/contentOptimizer.js";
@@ -324,6 +330,50 @@ Gruppen vorher einteilen
   assert.equal(sections.methoden, "Partnerarbeit");
   assert.equal(sections.materialien, "Arbeitsblatt A1\nOnline-Quelle");
   assert.equal(sections.organisation, "PC-Raum buchen\nGruppen vorher einteilen");
+});
+
+test("Renderer behaelt Gandalf-Methodenabschnitte im Methodenblock", () => {
+  const sections = splitMethodSections(`
+Lern- und Arbeitstechniken: Partnerarbeit
+Individuelle Foerderung: Wahlaufgabe mit Hilfekarten
+Selbstgesteuertes Lernen: Lernjournal und Reflexion
+Unterrichtsmaterialien / Fundstelle: Arbeitsblatt A1
+`);
+
+  assert.equal(
+    sections.methoden,
+    [
+      "Partnerarbeit",
+      "Individuelle Foerderung: Wahlaufgabe mit Hilfekarten",
+      "Selbstgesteuertes Lernen: Lernjournal und Reflexion"
+    ].join("\n")
+  );
+  assert.equal(sections.materialien, "Arbeitsblatt A1");
+});
+
+test("Gandalf-Ausgabe wird auf das interne LS-Schema abgebildet", () => {
+  const mapped = mapGandalfToLearningSituation(
+    {
+      id: "LS 5.1",
+      situation: "Ein Kunde bittet um ein Angebot.",
+      produkt: "Angebotsvergleich",
+      ziel: [
+        "Die Lernenden werten Kundenanfragen aus.",
+        "Sie nutzen <MK>Online-Quellen</MK> zur Validierung."
+      ],
+      konInhalt: "Anfrage, Bezugskalkulation",
+      individuell: "Hilfekarten nach Bedarf",
+      sol: "Lernjournal"
+    },
+    0,
+    { methoden: "Partnerarbeit" }
+  );
+
+  const normalized = normalizeLearningDocument({ lernsituationen: [mapped] });
+  assert.equal(normalized.lernsituationen[0].id, "LS 5.1");
+  assert.equal(normalized.lernsituationen[0].handlungsprodukt, "Angebotsvergleich");
+  assert.deepEqual(normalized.lernsituationen[0].kompetenzen[1].tags, ["MK"]);
+  assert.match(normalized.lernsituationen[0].methoden, /Individuelle Foerderung/);
 });
 
 test("Renderer-Fallback fuer KI-Zuordnung erkennt KI-Anwendung und Recht", () => {

@@ -28,7 +28,9 @@ body {
 }
 
 button,
-input {
+input,
+select,
+textarea {
   font: inherit;
 }
 
@@ -85,12 +87,16 @@ h2 {
 
 .button,
 .file-picker span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-height: 42px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   padding: 0 16px;
   cursor: pointer;
   font-weight: 700;
+  text-decoration: none;
   transition:
     background 160ms ease,
     border-color 160ms ease,
@@ -140,13 +146,45 @@ h2 {
 }
 
 .upload-panel,
+.workflow-panel,
 .meta-panel,
 .rag-panel,
+.assistant-nav,
+.wizard-status,
+.wizard-step,
+.admin-panel,
+.admin-doc-card,
 .json-panel,
 .situation-card {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--surface);
+}
+
+.workflow-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+  padding: 14px;
+}
+
+.workflow-panel h2,
+.workflow-panel p {
+  margin: 0;
+}
+
+.workflow-panel p {
+  margin-top: 4px;
+  color: var(--muted);
+}
+
+.workflow-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
 }
 
 .upload-panel {
@@ -174,6 +212,11 @@ h2 {
   display: inline-flex;
   align-items: center;
   background: var(--surface-muted);
+}
+
+.compact-picker span {
+  min-height: 38px;
+  padding: 0 12px;
 }
 
 #fileName {
@@ -309,7 +352,11 @@ h2 {
 }
 
 .meta-input,
-.situation-id-input {
+.situation-id-input,
+.form-grid input,
+.form-grid textarea,
+.search-inline input,
+.full-label textarea {
   width: 100%;
   min-width: 0;
   border: 1px solid var(--line);
@@ -320,9 +367,20 @@ h2 {
   font-weight: 700;
 }
 
+.form-grid textarea,
+.full-label textarea {
+  resize: vertical;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
 .meta-input:focus,
 .situation-id-input:focus,
-.model-select:focus {
+.model-select:focus,
+.form-grid input:focus,
+.form-grid textarea:focus,
+.search-inline input:focus,
+.full-label textarea:focus {
   outline: 2px solid rgba(37, 99, 235, 0.2);
   border-color: var(--blue);
 }
@@ -441,13 +499,252 @@ h2 {
   text-align: center;
 }
 
+.hidden {
+  display: none !important;
+}
+
+.wizard-shell,
+.admin-shell {
+  display: grid;
+  gap: 14px;
+}
+
+.assistant-nav,
+.wizard-status,
+.admin-panel {
+  padding: 14px;
+}
+
+.assistant-nav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.assistant-tab {
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 8px 14px;
+  color: var(--text);
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.assistant-tab.active {
+  border-color: var(--blue);
+  background: #eff6ff;
+  color: var(--blue-dark);
+}
+
+.model-inline {
+  display: grid;
+  min-width: 220px;
+  margin-left: auto;
+}
+
+.model-inline span {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.wizard-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: var(--surface-muted);
+}
+
+.wizard-status span {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.assistant-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.wizard-step {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+}
+
+.wizard-step > header,
+.admin-panel > header,
+.admin-doc-card > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.wizard-step > header span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.wizard-step h2,
+.admin-panel h2,
+.admin-doc-card h2 {
+  margin: 0;
+}
+
+.form-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.form-grid.two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.form-grid.three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.form-grid label,
+.full-label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.search-inline {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.compact-search {
+  align-self: end;
+}
+
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.result-list {
+  display: grid;
+  gap: 10px;
+}
+
+.result-item {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px;
+  background: #ffffff;
+}
+
+.result-item strong,
+.result-item a {
+  color: var(--text);
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.result-item p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.analysis-editor,
+.ls-editor,
+.admin-doc-list {
+  display: grid;
+  gap: 12px;
+}
+
+.mode-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.mode-grid label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  background: #ffffff;
+  font-weight: 700;
+}
+
+.admin-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.admin-doc-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.admin-doc-card {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.admin-doc-card p {
+  margin: 0;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.admin-doc-card details {
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+
+.admin-doc-card summary {
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.doc-badge {
+  border-radius: 999px;
+  padding: 4px 9px;
+  font-size: 0.76rem;
+}
+
+.doc-badge.ready {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.doc-badge.empty {
+  background: #f1f5f9;
+  color: var(--muted);
+}
+
 @media (max-width: 860px) {
   .app-shell {
     padding: 14px;
   }
 
   .topbar,
-  .upload-panel {
+  .upload-panel,
+  .workflow-panel,
+  .assistant-nav,
+  .wizard-status {
     align-items: stretch;
     flex-direction: column;
   }
@@ -461,14 +758,30 @@ h2 {
   }
 
   .button,
-  .actions > * {
+  .actions > *,
+  .workflow-actions > *,
+  .button-row > * {
     width: 100%;
   }
 
   .meta-panel,
   .rag-panel,
-  .content-grid {
+  .content-grid,
+  .form-grid.two,
+  .form-grid.three,
+  .admin-doc-list,
+  .search-inline {
     grid-template-columns: 1fr;
+  }
+
+  .model-inline {
+    width: 100%;
+    min-width: 0;
+    margin-left: 0;
+  }
+
+  .wizard-status span {
+    text-align: left;
   }
 
   .rag-actions {

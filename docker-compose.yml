@@ -11,12 +11,13 @@ services:
       OLLAMA_URL: "${OLLAMA_URL:-http://host.docker.internal:11434/api/generate}"
       OLLAMA_MODEL: "${OLLAMA_MODEL:-llama3.1:8b}"
       OLLAMA_EMBEDDING_MODEL: "${OLLAMA_EMBEDDING_MODEL:-nomic-embed-text}"
-      OLLAMA_NUM_CTX: "${OLLAMA_NUM_CTX:-16384}"
+      OLLAMA_NUM_CTX: "${OLLAMA_NUM_CTX:-32768}"
       OLLAMA_NUM_PREDICT: "${OLLAMA_NUM_PREDICT:-4096}"
       OLLAMA_TIMEOUT_MS: "${OLLAMA_TIMEOUT_MS:-1800000}"
       AI_TIMEOUT_MS: "${AI_TIMEOUT_MS:-2700000}"
       SCENARIO_MODE: "${SCENARIO_MODE:-batch}"
       AI_DEBUG: "${AI_DEBUG:-0}"
+      SEARXNG_URL: "${SEARXNG_URL:-http://searxng:8080}"
     volumes:
       - ./data:/app/data
     extra_hosts:
@@ -27,4 +28,13 @@ services:
       timeout: 10s
       retries: 3
       start_period: 20s
+    restart: unless-stopped
+
+  searxng:
+    image: searxng/searxng:latest
+    container_name: searxng
+    volumes:
+      - ./data/searxng:/etc/searxng:rw
+    expose:
+      - "8080"
     restart: unless-stopped

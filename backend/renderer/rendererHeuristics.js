@@ -6,6 +6,27 @@ export function splitMethodSections(value = "") {
     const line = block.trim();
     if (!line) continue;
 
+    const techniquesMatch = line.match(/^Lern-\s*und\s*Arbeitstechniken\s*:\s*(.*)$/i);
+    if (techniquesMatch) {
+      target = "methoden";
+      if (techniquesMatch[1]) sections[target].push(techniquesMatch[1]);
+      continue;
+    }
+
+    const individualMatch = line.match(/^Individuelle\s+F(?:ö|oe)rderung\s*:\s*(.*)$/i);
+    if (individualMatch) {
+      target = "methoden";
+      sections[target].push(`Individuelle Foerderung: ${individualMatch[1] || ""}`.trim());
+      continue;
+    }
+
+    const solMatch = line.match(/^Selbstgesteuertes\s+Lernen\s*:\s*(.*)$/i);
+    if (solMatch) {
+      target = "methoden";
+      sections[target].push(`Selbstgesteuertes Lernen: ${solMatch[1] || ""}`.trim());
+      continue;
+    }
+
     const materialMatch = line.match(/^Unterrichtsmaterialien\s*\/?\s*Fundstelle\s*:\s*(.*)$/i);
     if (materialMatch) {
       target = "materialien";

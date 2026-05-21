@@ -25,6 +25,7 @@ const ragRecent = document.querySelector("#ragRecent");
 const ragRefreshButton = document.querySelector("#ragRefreshButton");
 const ragReindexButton = document.querySelector("#ragReindexButton");
 const ragResetButton = document.querySelector("#ragResetButton");
+const uploadWorkflowButton = document.querySelector("#uploadWorkflowButton");
 
 const metaFields = {
   beruf: document.querySelector("#metaBeruf"),
@@ -96,6 +97,11 @@ fileInput.addEventListener("change", async () => {
   }
 
   await uploadFile(file);
+});
+
+uploadWorkflowButton?.addEventListener("click", () => {
+  fileInput.focus();
+  fileInput.click();
 });
 
 scenariosButton.addEventListener("click", async () => {
@@ -248,6 +254,24 @@ function renderDocument() {
 
   for (const [index, situation] of doc.lernsituationen.entries()) {
     situationList.append(renderSituationCard(situation, index));
+  }
+}
+
+function loadPendingDocument() {
+  const raw = sessionStorage.getItem("pendingDocument");
+  if (!raw) return;
+
+  try {
+    const document = JSON.parse(raw);
+    state.document = document;
+    state.fileName = "Gandalf-Ergebnis";
+    fileName.textContent = "Gandalf-Ergebnis";
+    setRagDirty(true);
+    setStatus(`${document.meta?.anzahl_ls || 0} Lernsituation(en) von Gandalf übernommen.`);
+  } catch (error) {
+    setStatus(`Gandalf-Ergebnis konnte nicht geladen werden: ${error.message}`);
+  } finally {
+    sessionStorage.removeItem("pendingDocument");
   }
 }
 
@@ -753,4 +777,5 @@ function populateModelSelect(models, configuredModel) {
 
 checkSystemStatus();
 loadRagStatus();
+loadPendingDocument();
 renderDocument();

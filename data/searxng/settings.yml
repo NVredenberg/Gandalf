@@ -1,0 +1,8 @@
+use_default_settings: true
+server:
+  secret_key: "gandalf-local-searxng-change-me-2026"
+  limiter: false
+search:
+  formats:
+    - html
+    - json
