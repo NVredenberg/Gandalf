@@ -40,6 +40,8 @@ Die generierten DOCX-Dateien werden nicht im Container gespeichert. Der Browser 
 
 SearXNG wird nicht von dieser Compose-Datei gestartet. Die App nutzt einen bereits vorhandenen SearXNG-Dienst ueber `SEARXNG_URL`, standardmaessig `http://host.docker.internal:8080`. Wenn dein bestehender SearXNG auf einem anderen Host oder Port laeuft, passe `SEARXNG_URL` in `.env` an.
 
+Groessere PDFs fuer Frodo oder Gandalf werden ueber `UPLOAD_MAX_MB` begrenzt. Standard sind `100` MB. Wenn ein Rahmenlehrplan oder Pruefungskatalog groesser ist, kann der Wert in `.env` erhoeht werden.
+
 ## Funktionen
 
 - Upload von `.md` und `.docx`

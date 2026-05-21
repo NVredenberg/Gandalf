@@ -62,6 +62,8 @@ const frontendDir = path.join(rootDir, "frontend");
 const allowedExtensions = new Set([".md", ".docx", ".pdf"]);
 const port = Number(process.env.PORT || 3000);
 const MAX_LERNSITUATIONEN = readPositiveInteger(process.env.MAX_LERNSITUATIONEN, 20);
+const UPLOAD_MAX_MB = readPositiveInteger(process.env.UPLOAD_MAX_MB, 100);
+const UPLOAD_MAX_BYTES = UPLOAD_MAX_MB * 1024 * 1024;
 
 // Lange KI-Routen duerfen mehrere Ollama-Aufrufe hintereinander ausfuehren.
 // Standard: 45 Minuten, konfigurierbar per AI_TIMEOUT_MS.
@@ -86,7 +88,7 @@ const storage = multer.diskStorage({
 
 const upload = multer({
   storage,
-  limits: { fileSize: 25 * 1024 * 1024 },
+  limits: { fileSize: UPLOAD_MAX_BYTES },
   fileFilter: (_req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase();
     if (!allowedExtensions.has(ext)) {
@@ -597,6 +599,13 @@ app.get("*", (_req, res) => {
 });
 
 app.use((error, _req, res, _next) => {
+  if (error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE") {
+    res.status(413).json({
+      error: `Datei ist zu groß. Maximal erlaubt sind ${UPLOAD_MAX_MB} MB.`
+    });
+    return;
+  }
+
   const status = error.message?.includes("Ollama") ? 502 : 400;
   res.status(status).json({
     error: error.message || "Unerwarteter Fehler."
