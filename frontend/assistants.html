@@ -7,28 +7,65 @@
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <main class="app-shell">
-      <section class="workspace wizard-shell">
-        <header class="topbar">
-          <div>
-            <p class="eyebrow">Assistenten</p>
-            <h1>Frodo & Gandalf</h1>
-          </div>
-          <div class="actions">
-            <a class="button secondary" href="/index.html">DOCX-Generator</a>
-            <a class="button secondary" href="/admin.html">Admin</a>
-          </div>
-        </header>
+    <div class="product-shell">
+      <aside class="side-nav" aria-label="Hauptnavigation">
+        <a class="brand" href="/assistants.html#frodo" aria-label="Start">
+          <span class="brand-mark">LG</span>
+          <span>
+            <strong>Lernfeld</strong>
+            <small>Homelab</small>
+          </span>
+        </a>
 
-        <section class="assistant-nav" aria-label="Assistentenauswahl">
-          <a class="assistant-tab" data-assistant-tab="frodo" href="#frodo">Frodo</a>
-          <a class="assistant-tab" data-assistant-tab="gandalf" href="#gandalf">Gandalf</a>
+        <nav class="nav-list">
+          <a class="nav-link" data-shell-nav="frodo" href="/assistants.html#frodo">
+            <span class="nav-token">IN</span>
+            <span>Inhaltsermittler<small>Frodo</small></span>
+          </a>
+          <a class="nav-link" data-shell-nav="gandalf" href="/assistants.html#gandalf">
+            <span class="nav-token">LS</span>
+            <span>Lernsituations<wbr />generator<small>Gandalf</small></span>
+          </a>
+          <a class="nav-link" data-shell-nav="docx" href="/index.html">
+            <span class="nav-token">DX</span>
+            <span>Lernfeld-DOCX-<wbr />Generator<small>Dokument</small></span>
+          </a>
+          <a class="nav-link" data-shell-nav="rag" href="/rag.html">
+            <span class="nav-token">RG</span>
+            <span>RAG-Übersicht<small>Beispiele</small></span>
+          </a>
+          <a class="nav-link" data-shell-nav="admin" href="/admin.html">
+            <span class="nav-token">AD</span>
+            <span>Admin Panel<small>System</small></span>
+          </a>
+        </nav>
+
+        <section class="shell-health" aria-label="Systemstatus">
+          <span class="status-dot" data-shell-health-dot></span>
+          <div>
+            <strong data-shell-health-state>Prüfe KI</strong>
+            <small data-shell-health-detail>Ollama</small>
+          </div>
+        </section>
+      </aside>
+
+      <main class="page-shell wizard-shell">
+        <header class="page-header">
+          <div>
+            <span id="assistantPageKicker" class="page-kicker">Inhaltsermittler</span>
+            <h1 id="assistantPageTitle">Frodo</h1>
+          </div>
           <div class="model-inline">
             <span>Modell</span>
             <select id="assistantModelSelect" class="model-select" aria-label="Sprachmodell">
               <option value="">Standardmodell</option>
             </select>
           </div>
+        </header>
+
+        <section class="assistant-switcher" aria-label="Assistent">
+          <a class="assistant-tab" data-assistant-tab="frodo" href="#frodo">Inhaltsermittler</a>
+          <a class="assistant-tab" data-assistant-tab="gandalf" href="#gandalf">Lernsituationsgenerator</a>
         </section>
 
         <section id="frodoPanel" class="assistant-panel" data-assistant-panel="frodo">
@@ -249,9 +286,10 @@
             </div>
           </section>
         </section>
-      </section>
-    </main>
+      </main>
+    </div>
 
+    <script type="module" src="/shell.js"></script>
     <script type="module" src="/frodo.js"></script>
     <script type="module" src="/gandalf.js"></script>
   </body>

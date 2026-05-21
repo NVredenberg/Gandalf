@@ -25,7 +25,6 @@ const ragRecent = document.querySelector("#ragRecent");
 const ragRefreshButton = document.querySelector("#ragRefreshButton");
 const ragReindexButton = document.querySelector("#ragReindexButton");
 const ragResetButton = document.querySelector("#ragResetButton");
-const uploadWorkflowButton = document.querySelector("#uploadWorkflowButton");
 
 const metaFields = {
   beruf: document.querySelector("#metaBeruf"),
@@ -97,11 +96,6 @@ fileInput.addEventListener("change", async () => {
   }
 
   await uploadFile(file);
-});
-
-uploadWorkflowButton?.addEventListener("click", () => {
-  fileInput.focus();
-  fileInput.click();
 });
 
 scenariosButton.addEventListener("click", async () => {

@@ -7,55 +7,84 @@
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <main class="app-shell">
-      <section class="workspace">
-        <header class="topbar">
+    <div class="product-shell">
+      <aside class="side-nav" aria-label="Hauptnavigation">
+        <a class="brand" href="/assistants.html#frodo" aria-label="Start">
+          <span class="brand-mark">LG</span>
+          <span>
+            <strong>Lernfeld</strong>
+            <small>Homelab</small>
+          </span>
+        </a>
+
+        <nav class="nav-list">
+          <a class="nav-link" data-shell-nav="frodo" href="/assistants.html#frodo">
+            <span class="nav-token">IN</span>
+            <span>Inhaltsermittler<small>Frodo</small></span>
+          </a>
+          <a class="nav-link" data-shell-nav="gandalf" href="/assistants.html#gandalf">
+            <span class="nav-token">LS</span>
+            <span>Lernsituations<wbr />generator<small>Gandalf</small></span>
+          </a>
+          <a class="nav-link" data-shell-nav="docx" href="/index.html">
+            <span class="nav-token">DX</span>
+            <span>Lernfeld-DOCX-<wbr />Generator<small>Dokument</small></span>
+          </a>
+          <a class="nav-link" data-shell-nav="rag" href="/rag.html">
+            <span class="nav-token">RG</span>
+            <span>RAG-Übersicht<small>Beispiele</small></span>
+          </a>
+          <a class="nav-link" data-shell-nav="admin" href="/admin.html">
+            <span class="nav-token">AD</span>
+            <span>Admin Panel<small>System</small></span>
+          </a>
+        </nav>
+
+        <section class="shell-health" aria-label="Systemstatus">
+          <span class="status-dot" data-shell-health-dot></span>
           <div>
-            <p class="eyebrow">Lokal</p>
+            <strong data-shell-health-state>Prüfe KI</strong>
+            <small data-shell-health-detail>Ollama</small>
+          </div>
+        </section>
+      </aside>
+
+      <main class="page-shell">
+        <header class="page-header">
+          <div>
+            <span class="page-kicker">Dokument</span>
             <h1>Lernfeld-DOCX-Generator</h1>
           </div>
           <div class="actions">
             <button id="scenariosButton" class="button secondary" type="button" disabled>
-              Szenarien generieren
+              Szenarien
             </button>
             <button id="analyzeButton" class="button secondary" type="button" disabled>
-              KI prüfen
+              KI-Prüfung
             </button>
             <button id="renderButton" class="button primary" type="button" disabled>
-              Speichern unter
+              DOCX speichern
             </button>
           </div>
         </header>
 
-        <section class="workflow-panel" aria-label="Startauswahl">
-          <div>
-            <h2>Wie möchtest du starten?</h2>
-          </div>
-          <div class="workflow-actions">
-            <button id="uploadWorkflowButton" class="button secondary" type="button">
-              Dokument hochladen
-            </button>
-            <a class="button secondary" href="/assistants.html#frodo">Inhalte analysieren</a>
-            <a class="button primary" href="/assistants.html#gandalf">LS erstellen</a>
-            <a class="button secondary" href="/admin.html">Admin</a>
-          </div>
-        </section>
-
-        <section class="upload-panel">
-          <label class="file-picker">
+        <section class="docx-command">
+          <label class="file-picker file-picker-large">
             <input id="fileInput" type="file" accept=".md,.docx" />
             <span>Datei auswählen</span>
           </label>
-          <div>
+
+          <div class="document-state">
             <strong id="fileName">Keine Datei geladen</strong>
             <p id="statusText">Bereit</p>
           </div>
+
           <div id="serviceStatus" class="service-status checking" title="KI-Verbindung wird geprüft">
-            <span>Homelab-KI</span>
-            <strong id="ollamaStatus">Prüfe...</strong>
+            <span>Modell</span>
             <select id="modelSelect" class="model-select" aria-label="Sprachmodell">
               <option value="">Modell wird geladen</option>
             </select>
+            <strong id="ollamaStatus">Prüfe...</strong>
             <small id="ollamaDetails">Ollama</small>
           </div>
         </section>
@@ -79,39 +108,50 @@
           </div>
         </section>
 
-        <section class="rag-panel" aria-label="RAG-Speicher">
+        <section class="rag-panel compact-rag" aria-label="RAG am Dokument">
           <div class="rag-summary">
-            <span>RAG-Speicher</span>
+            <span>RAG am Dokument</span>
             <strong id="ragCount">0 Beispiele</strong>
             <small id="ragDetails">Noch nicht geladen</small>
           </div>
           <div id="ragRecent" class="rag-recent"></div>
           <div class="rag-actions">
             <button id="ragRefreshButton" class="button secondary" type="button">
-              Status aktualisieren
+              Aktualisieren
             </button>
             <button id="ragReindexButton" class="button secondary" type="button" disabled>
-              Aktuelles Dokument indexieren
+              Dokument indexieren
             </button>
             <button id="ragResetButton" class="button danger" type="button">
-              RAG leeren
+              Leeren
             </button>
           </div>
         </section>
 
         <section class="content-grid">
-          <div>
-            <h2>Erkannte Lernsituationen</h2>
+          <div class="panel section-panel">
+            <header class="section-header">
+              <div>
+                <span>Lernsituationen</span>
+                <h2>Erkannte Inhalte</h2>
+              </div>
+            </header>
             <div id="situationList" class="situation-list"></div>
           </div>
           <aside class="json-panel">
-            <h2>Standardisiertes JSON</h2>
+            <header class="section-header">
+              <div>
+                <span>Export</span>
+                <h2>Standardisiertes JSON</h2>
+              </div>
+            </header>
             <pre id="jsonPreview">{}</pre>
           </aside>
         </section>
-      </section>
-    </main>
+      </main>
+    </div>
 
+    <script type="module" src="/shell.js"></script>
     <script type="module" src="/app.js"></script>
   </body>
 </html>

@@ -23,6 +23,8 @@ const frodoLsCount = document.querySelector("#frodoLsCount");
 const frodoOwnContent = document.querySelector("#frodoOwnContent");
 const frodoAnotherLfButton = document.querySelector("#frodoAnotherLfButton");
 const frodoToGandalfButton = document.querySelector("#frodoToGandalfButton");
+const assistantPageKicker = document.querySelector("#assistantPageKicker");
+const assistantPageTitle = document.querySelector("#assistantPageTitle");
 
 syncAssistantView();
 window.addEventListener("hashchange", syncAssistantView);
@@ -266,6 +268,15 @@ function showFrodoStep(step) {
 
 function syncAssistantView() {
   const active = window.location.hash === "#gandalf" ? "gandalf" : "frodo";
+  if (assistantPageKicker) {
+    assistantPageKicker.textContent = active === "gandalf"
+      ? "Lernsituationsgenerator"
+      : "Inhaltsermittler";
+  }
+  if (assistantPageTitle) {
+    assistantPageTitle.textContent = active === "gandalf" ? "Gandalf" : "Frodo";
+  }
+  document.title = active === "gandalf" ? "Lernsituationsgenerator" : "Inhaltsermittler";
   document.querySelectorAll("[data-assistant-panel]").forEach((panel) => {
     panel.classList.toggle("hidden", panel.dataset.assistantPanel !== active);
   });

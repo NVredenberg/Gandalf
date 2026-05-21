@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Admin Panel</title>
+    <title>RAG-Übersicht</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
@@ -49,47 +49,66 @@
         </section>
       </aside>
 
-      <main class="page-shell admin-shell">
+      <main class="page-shell rag-page">
         <header class="page-header">
           <div>
-            <span class="page-kicker">System</span>
-            <h1>Admin Panel</h1>
+            <span class="page-kicker">Beispiele</span>
+            <h1>RAG-Übersicht</h1>
           </div>
-          <div class="wizard-status inline-status">
-            <strong>Status</strong>
-            <span id="adminStatus">Bereit</span>
+          <div class="actions">
+            <button id="ragPageRefreshButton" class="button secondary" type="button">
+              Aktualisieren
+            </button>
+            <button id="ragPageResetButton" class="button danger" type="button">
+              RAG leeren
+            </button>
           </div>
         </header>
 
-        <section class="admin-panel">
-          <header class="section-header">
-            <div>
-              <span>Gandalf</span>
-              <h2>Hintergrunddokumente</h2>
-            </div>
-            <button id="adminRefreshButton" class="button secondary" type="button">
-              Aktualisieren
-            </button>
-          </header>
-          <div id="adminDocsList" class="admin-doc-list"></div>
+        <section class="metric-grid" aria-label="RAG-Kennzahlen">
+          <article class="metric-card">
+            <span>Gesamt</span>
+            <strong id="ragPageTotal">0</strong>
+          </article>
+          <article class="metric-card">
+            <span>Kuratierte Beispiele</span>
+            <strong id="ragPageApproved">0</strong>
+          </article>
+          <article class="metric-card">
+            <span>Status</span>
+            <strong id="ragPageStatus">Bereit</strong>
+          </article>
         </section>
 
-        <section class="admin-panel">
-          <header class="section-header">
-            <div>
-              <span>Web-Suche</span>
-              <h2>SearXNG</h2>
+        <section class="content-grid rag-content-grid">
+          <div class="panel section-panel">
+            <header class="section-header">
+              <div>
+                <span>Speicher</span>
+                <h2>Letzte Einträge</h2>
+              </div>
+            </header>
+            <div id="ragPageRecent" class="rag-entry-list"></div>
+          </div>
+
+          <aside class="panel section-panel">
+            <header class="section-header">
+              <div>
+                <span>Aktionen</span>
+                <h2>Übergänge</h2>
+              </div>
+            </header>
+            <div class="quick-links">
+              <a class="button secondary" href="/index.html">DOCX-Generator</a>
+              <a class="button secondary" href="/assistants.html#gandalf">Gandalf</a>
+              <a class="button secondary" href="/admin.html">Admin Panel</a>
             </div>
-            <button id="searchStatusButton" class="button secondary" type="button">
-              Testsuche
-            </button>
-          </header>
-          <div id="searchStatus" class="result-list"></div>
+          </aside>
         </section>
       </main>
     </div>
 
     <script type="module" src="/shell.js"></script>
-    <script type="module" src="/admin.js"></script>
+    <script type="module" src="/rag.js"></script>
   </body>
 </html>
