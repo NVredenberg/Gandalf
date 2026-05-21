@@ -29,15 +29,18 @@ window.addEventListener("hashchange", syncAssistantView);
 loadAssistantModels();
 
 frodoUploadButton?.addEventListener("click", uploadFrodoDocuments);
+frodoPlanFile?.addEventListener("change", resetFrodoUploadState);
+frodoCatalogFile?.addEventListener("change", resetFrodoUploadState);
 frodoStep1Next?.addEventListener("click", () => showFrodoStep(2));
 frodoBackToUpload?.addEventListener("click", () => showFrodoStep(1));
 frodoAnalyzeButton?.addEventListener("click", analyzeWithFrodo);
 frodoSearchButton?.addEventListener("click", searchWithFrodo);
 frodoAnotherLfButton?.addEventListener("click", () => showFrodoStep(2));
 frodoToGandalfButton?.addEventListener("click", handoffToGandalf);
+updateFrodoControls();
 
-async function ensureFrodoSession() {
-  if (frodoState.sessionId) return frodoState.sessionId;
+async function ensureFrodoSession({ fresh = false } = {}) {
+  if (frodoState.sessionId && !fresh) return frodoState.sessionId;
   const response = await fetch("/api/frodo/session", { method: "POST" });
   const payload = await readJsonResponse(response);
   frodoState.sessionId = payload.sessionId;
@@ -52,10 +55,11 @@ async function uploadFrodoDocuments() {
     return;
   }
 
+  clearFrodoUploadState();
   setFrodoBusy(true, "PDFs werden gelesen...");
 
   try {
-    const sessionId = await ensureFrodoSession();
+    const sessionId = await ensureFrodoSession({ fresh: true });
     const formData = new FormData();
     formData.append("rahmenlehrplan", plan);
     formData.append("pruefungskatalog", catalog);
@@ -66,7 +70,6 @@ async function uploadFrodoDocuments() {
     });
     const payload = await readJsonResponse(response);
     frodoState.uploaded = true;
-    frodoStep1Next.disabled = false;
     renderFrodoUploadSummary(payload);
     setFrodoStatus("Dokumente erkannt.");
   } catch (error) {
@@ -77,6 +80,11 @@ async function uploadFrodoDocuments() {
 }
 
 async function analyzeWithFrodo() {
+  if (!frodoState.uploaded) {
+    setFrodoStatus("Bitte zuerst beide PDFs pruefen.");
+    return;
+  }
+
   const fachrichtung = frodoFachrichtung.value.trim();
   const lernfeld = frodoLernfeld.value.trim();
   if (!fachrichtung || !lernfeld) {
@@ -84,6 +92,8 @@ async function analyzeWithFrodo() {
     return;
   }
 
+  frodoState.analysis = null;
+  if (frodoAnalysisEditor) frodoAnalysisEditor.replaceChildren();
   setFrodoBusy(true, "Frodo analysiert...");
   const progress = openProgressStream(setFrodoStatus);
 
@@ -315,10 +325,33 @@ function selectedAssistantModel() {
 }
 
 function setFrodoBusy(isBusy, message) {
-  [frodoUploadButton, frodoAnalyzeButton, frodoSearchButton, frodoToGandalfButton].forEach((button) => {
-    if (button) button.disabled = isBusy;
-  });
+  frodoState.busy = isBusy;
+  updateFrodoControls();
   if (message) setFrodoStatus(message);
+}
+
+function resetFrodoUploadState() {
+  clearFrodoUploadState();
+  updateFrodoControls();
+  if (frodoPlanFile?.files?.length || frodoCatalogFile?.files?.length) {
+    setFrodoStatus("Neue PDFs ausgewaehlt. Bitte PDFs pruefen.");
+  }
+}
+
+function clearFrodoUploadState() {
+  frodoState.uploaded = false;
+  frodoState.analysis = null;
+  if (frodoUploadSummary) frodoUploadSummary.replaceChildren();
+  if (frodoAnalysisEditor) frodoAnalysisEditor.replaceChildren();
+}
+
+function updateFrodoControls() {
+  const isBusy = Boolean(frodoState.busy);
+  if (frodoUploadButton) frodoUploadButton.disabled = isBusy;
+  if (frodoSearchButton) frodoSearchButton.disabled = isBusy;
+  if (frodoStep1Next) frodoStep1Next.disabled = isBusy || !frodoState.uploaded;
+  if (frodoAnalyzeButton) frodoAnalyzeButton.disabled = isBusy || !frodoState.uploaded;
+  if (frodoToGandalfButton) frodoToGandalfButton.disabled = isBusy || !frodoState.analysis;
 }
 
 function setFrodoStatus(message) {

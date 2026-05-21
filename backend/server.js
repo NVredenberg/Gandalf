@@ -64,6 +64,7 @@ const port = Number(process.env.PORT || 3000);
 const MAX_LERNSITUATIONEN = readPositiveInteger(process.env.MAX_LERNSITUATIONEN, 20);
 const UPLOAD_MAX_MB = readPositiveInteger(process.env.UPLOAD_MAX_MB, 100);
 const UPLOAD_MAX_BYTES = UPLOAD_MAX_MB * 1024 * 1024;
+const PDF_MIN_TEXT_CHARS = readPositiveInteger(process.env.PDF_MIN_TEXT_CHARS, 200);
 
 // Lange KI-Routen duerfen mehrere Ollama-Aufrufe hintereinander ausfuehren.
 // Standard: 45 Minuten, konfigurierbar per AI_TIMEOUT_MS.
@@ -258,6 +259,9 @@ app.post(
         parsePdfFile(planFile.path),
         parsePdfFile(catalogFile.path)
       ]);
+      validateParsedPdfText(rahmenlehrplan, "Rahmenlehrplan");
+      validateParsedPdfText(pruefungskatalog, "Pruefungskatalog");
+
       const summary = summarizeFrodoInputs({ rahmenlehrplan, pruefungskatalog });
       updateSession(session.id, {
         rahmenlehrplanText: rahmenlehrplan.text,
@@ -354,6 +358,7 @@ app.post("/api/gandalf/upload-plan/:sessionId", upload.single("file"), async (re
     }
 
     const parsed = await parsePdfFile(req.file.path);
+    validateParsedPdfText(parsed, "Rahmenlehrplan");
     updateSession(session.id, { plan: parsed.text, planSource: req.file.originalname });
     res.json({
       pages: parsed.pages,
@@ -703,6 +708,17 @@ function validateLearningSituationCount(document) {
 
   throw new Error(
     `Zu viele Lernsituationen: ${count}. Maximal erlaubt sind ${MAX_LERNSITUATIONEN}.`
+  );
+}
+
+function validateParsedPdfText(parsed, label) {
+  const chars = String(parsed?.text || "").replace(/\s+/g, "").length;
+  if (chars >= PDF_MIN_TEXT_CHARS) return;
+
+  throw new Error(
+    `${label} wurde als PDF gelesen, enthaelt aber nur ${chars} auslesbare Zeichen. ` +
+      "Bitte ein textbasiertes PDF verwenden oder die Datei mit OCR neu erzeugen. " +
+      "Stark komprimierte Bild-PDFs koennen ohne OCR nicht analysiert werden."
   );
 }
 

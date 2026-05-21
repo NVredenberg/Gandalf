@@ -19,6 +19,7 @@ services:
       AI_DEBUG: "${AI_DEBUG:-0}"
       SEARXNG_URL: "${SEARXNG_URL:-http://host.docker.internal:8080}"
       UPLOAD_MAX_MB: "${UPLOAD_MAX_MB:-100}"
+      PDF_MIN_TEXT_CHARS: "${PDF_MIN_TEXT_CHARS:-200}"
     volumes:
       - ./data:/app/data
     extra_hosts:
